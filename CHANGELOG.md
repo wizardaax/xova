@@ -4,7 +4,43 @@ All notable changes to Xova are recorded here. Format: [Keep a Changelog](https:
 
 ## [Unreleased]
 
-Nothing yet — next release lands here first.
+### Added (v0.1.1 candidate)
+
+- **Browser-style slim toolbar** — quick-actions row dropped from 25 buttons to 6 essentials: `≡ menu`, `⌘ command`, `📎 upload`, `✂ snip`, `🖥 screen`, `🤖 build`, `🔇/🎙 jarvis`. Everything else lives in the Command Palette (Ctrl+K).
+- **Keyboard shortcuts** — `Ctrl+K` toggle palette, `Ctrl+F` find-in-chat (pre-fills `/find`), `Ctrl+T` new session.
+- **Visual life** — rotating thinking-rings on Xova/Jarvis silhouettes (counter-rotating, distinct rhythms), animated typing dots while streaming or summarising, soft radial gradient backdrop in chat area for depth.
+- **Live recursive-field empty state** — when chat is blank, a 60-point φ-spiral (`r = 3·√n`, `θ = n·φ`) blooms in continuously. The same identity verified in `recursive-field-math-pro` at 1e-14, drawn live.
+- **Cross-session memory** — recall index across all saved sessions, auto-injected into Xova's system prompt for relevant token-overlap matches; `/recall <q>` slash command for direct search.
+- **`disable_tools` mode** for the bridge / banter / idle / summarize paths so the small model returns plain text instead of reflexive tool calls.
+- **Bridge identity grounding** — sender-aware system prompt (Jarvis vs Claude) prevents the small model confabulating ("Jarvis is from Google", "I run on T5").
+- **Recall threshold** — multi-token queries require ≥2 token overlap to match, preventing low-score noise injection into the system prompt.
+- **Jarvis-side sanitizer** — strips fake `Xova:` impersonation blocks from Jarvis's voice-inbox replies before display.
+- **Typo-tolerant Jarvis routing** — `jarivs`, `jarvi`, `jervis`, `javis`, `jarbis`, etc. now route directly to the real Jarvis daemon, matching the daemon's wake-aliases.
+- **Empty-state starter prompts** — six clickable starter buttons appear when chat is blank (alongside the field visualisation).
+
+### Changed
+
+- **App icon** — chrome isometric cube wireframe replacing the default Tauri logo. Generated full size set (32px → 512px square logos + .ico + .icns + Android/iOS variants).
+- **Jarvis silhouette** — Iron Man helmet → wireframe octahedron with luminous core. Removes the only trademark-adjacent visual anchor; pairs with Xova's arc reactor (circle/diamond geometric duality) and harmonizes with the cube app icon.
+- **Status bar** — gradient backdrop, uppercase XOVA / JARVIS labels with accent colors, dot dividers; rotating dashed ring orbits silhouette when active.
+- **Project positioning** — `wizardaax.github.io` reorganized into "Substrate" (Foundations / Papers / SCE-88 architecture, primary) and "Demonstrators" (Xova / Demo / Outreach, secondary). Math-first, above-AGI framing. `DEMO.md` rewritten to open on the math, not the chat. `OUTREACH.md` flipped lanes — math.SE / mathematicians primary, Show HN / r/LocalLLaMA tertiary.
+
+### Fixed
+
+- **`}}` JSX syntax error** in the palette `p-mute` item that strict TS would have flagged.
+- **Dead state hooks** — `cameraOn` / `feedOn` / `phonesOn` / `memoryOn` setters that were no longer read anywhere; slash commands now correctly toggle the workspace dock instead.
+- **Idle banter timer churn** — `messages` was in the deps array of the 30s interval, tearing it down + recreating on every new chat message. Switched to `messagesRef` so the interval is stable.
+- **Idle banter speaking as Jarvis** — was misleading (no daemon, no TTS). Made idle banter Xova-only; she can mention Jarvis in her remark instead.
+- **Empty sanitizer output** — when whole reply was a `🎙 Jarvis:` line, `stripImpersonation` returned empty. Now keeps the body, strips only the speaker label.
+- **Generated audio in repo** — `plugins/codex_symphony.wav` (50.5 MB) was triggering GitHub's large-file warning on every push; now `.gitignore`d (rebuild via `python plugins/sound_wave.py`).
+- **Token leak** — a `ghp_*` PAT was embedded in plain text in `.git/config` of one repo. Stripped, switched git globally to the Windows Credential Manager helper, token revoked at GitHub.
+
+### Known limitations (deferred to v0.2.0)
+
+- **Not yet redistributable for arbitrary users.** Hardcoded paths (`C:\Xova\memory\`, `C:\jarvis\src\`), Adam-specific identity in default prompts, no first-run wizard, no graceful degradation if Ollama or Jarvis is missing. Tagged for a v0.2.0 redistributable milestone — see GitHub issues / roadmap.
+- **GPU `free` reading** is total system, not Ollama-attributed.
+- **Recall search** is token-overlap, not embedding-based — adequate for "have we discussed X" but won't catch semantic paraphrases.
+- **`/banter`** R3 closer fires after a fixed 8s wait; on slow Jarvis cold-load, the closer can land before his real reply.
 
 ---
 
