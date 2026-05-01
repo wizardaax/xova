@@ -31,17 +31,12 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Cache pnpm store
+      - name: Cache npm store
         uses: actions/cache@v4
         with:
-          path: ~/.pnpm-store
-          key: pnpm-${{ runner.os }}-${{ hashFiles('app/pnpm-lock.yaml', 'app/package-lock.json') }}
-          restore-keys: pnpm-${{ runner.os }}-
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('app/package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
 
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
@@ -58,7 +53,7 @@ jobs:
 
       - name: Install npm dependencies
         working-directory: app
-        run: pnpm install --frozen-lockfile
+        run: npm ci
 
       - name: Build Tauri app and upload to release
         uses: tauri-apps/tauri-action@v0
