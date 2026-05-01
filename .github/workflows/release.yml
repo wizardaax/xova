@@ -1,0 +1,75 @@
+name: Build and Release
+
+# Triggered by:
+#   - Pushing a v* tag (e.g. `git tag v0.1.1 && git push --tags`) — builds + uploads
+#   - Manual workflow_dispatch — builds, no upload (smoke-test)
+#
+# What it does:
+#   On a fresh Windows runner, pnpm install + pnpm tauri build, producing:
+#     app/src-tauri/target/release/bundle/msi/Xova_<ver>_x64_en-US.msi
+#     app/src-tauri/target/release/bundle/nsis/Xova_<ver>_x64-setup.exe
+#   On a tag push, those installers are attached to the matching GitHub
+#   release (created if missing) using the official tauri-action.
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write  # needed to create / update releases
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.pnpm-store
+          key: pnpm-${{ runner.os }}-${{ hashFiles('app/pnpm-lock.yaml', 'app/package-lock.json') }}
+          restore-keys: pnpm-${{ runner.os }}-
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            app/src-tauri/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('app/src-tauri/Cargo.lock') }}
+          restore-keys: cargo-${{ runner.os }}-
+
+      - name: Install npm dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri app and upload to release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Xova ${{ github.ref_name }}'
+          releaseDraft: false
+          prerelease: false
+          # Don't publish on workflow_dispatch (no tag); just smoke-build.
+          includeUpdaterJson: false
+          includeRelease: ${{ startsWith(github.ref, 'refs/tags/v') }}
