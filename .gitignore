@@ -1,0 +1,46 @@
+# Build artefacts
+**/node_modules/
+**/dist/
+**/target/
+**/build/
+**/.next/
+**/.turbo/
+**/htmlcov/
+**/__pycache__/
+*.pyc
+*.pdb
+*.lib
+*.tmp
+
+# Tauri
+**/src-tauri/target/
+
+# Local runtime state — these are user-private; back them up via the
+# scheduled XovaBackup task instead of committing.
+memory/voice_inbox.json
+memory/voice_user_inbox.json
+memory/jarvis_inbox.json
+memory/xova_chat_inbox.json
+memory/xova_chat_outbox.json
+memory/xova_command_inbox.json
+memory/snippets.md
+memory/notes.md
+memory/last_context.md
+memory/uploads/
+memory/screen.png
+memory/sessions/
+memory/voice_profile/
+memory/reminders.json
+memory/*.json
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Lockfiles you might or might not want — leaving included by default
+# package-lock.json, pnpm-lock.yaml, Cargo.lock — keep these in git

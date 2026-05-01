@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.tauri.app/capabilities/2",
+  "identifier": "default",
+  "description": "Default capabilities for Xova",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "core:event:default",
+    "core:window:default",
+    "core:webview:default",
+    "core:app:default",
+    "core:path:default",
+    "shell:default",
+    "clipboard-manager:default",
+    "global-shortcut:default"
+  ]
+}
