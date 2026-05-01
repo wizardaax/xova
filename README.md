@@ -1,6 +1,13 @@
 # Xova
 
+![Xova running with Jarvis](docs/screenshot.png)
+
 **Adam Snellman's sovereign desktop AI agent** — a Tauri/React/Rust app that pairs with **Jarvis** (a Python voice butler) to give you a two-AI team on your own machine. Local models via Ollama. No cloud required.
+
+[![Release](https://img.shields.io/github/v/release/wizardaax/xova?include_prereleases&logo=github)](https://github.com/wizardaax/xova/releases)
+[![Build](https://github.com/wizardaax/xova/actions/workflows/release.yml/badge.svg)](https://github.com/wizardaax/xova/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Framework](https://img.shields.io/badge/Recursive_Field_Framework-9b59ff)](https://wizardaax.github.io)
 
 ```
 ┌─────────── Xova ───────────┐         ┌──────── Jarvis ────────┐
