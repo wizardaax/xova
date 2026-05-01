@@ -42,5 +42,9 @@ memory/*.json
 Thumbs.db
 .DS_Store
 
+# Generated audio (rebuild via `python plugins/sound_wave.py`)
+plugins/*.wav
+plugins/plugins/*.wav
+
 # Lockfiles you might or might not want — leaving included by default
 # package-lock.json, pnpm-lock.yaml, Cargo.lock — keep these in git
