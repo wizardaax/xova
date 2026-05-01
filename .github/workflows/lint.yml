@@ -1,0 +1,32 @@
+name: Lint
+
+# Runs on every push and PR. Catches TypeScript errors before they hit a tag,
+# and prevents the long Tauri release build from failing for typo-level bugs.
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  tsc:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: app
+        run: npm ci
+
+      - name: TypeScript check
+        working-directory: app
+        run: npx tsc -b --noEmit

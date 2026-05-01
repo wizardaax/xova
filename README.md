@@ -6,6 +6,7 @@
 
 [![Release](https://img.shields.io/github/v/release/wizardaax/xova?include_prereleases&logo=github)](https://github.com/wizardaax/xova/releases)
 [![Build](https://github.com/wizardaax/xova/actions/workflows/release.yml/badge.svg)](https://github.com/wizardaax/xova/actions/workflows/release.yml)
+[![Lint](https://github.com/wizardaax/xova/actions/workflows/lint.yml/badge.svg)](https://github.com/wizardaax/xova/actions/workflows/lint.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Framework](https://img.shields.io/badge/Recursive_Field_Framework-9b59ff)](https://wizardaax.github.io)
 
