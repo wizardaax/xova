@@ -413,6 +413,7 @@ async fn ollama_chat(
     messages: String,
     model: Option<String>,
     num_ctx: Option<i64>,
+    disable_tools: Option<bool>,
 ) -> Result<String, String> {
     let client = reqwest::Client::new();
     // XOVA_OLLAMA_REQ_BUILDER_v3 â€” tool calling enabled
@@ -461,7 +462,11 @@ async fn ollama_chat(
     body_map.insert(String::from("messages"), parsed_messages);
     body_map.insert(String::from("stream"), serde_json::Value::Bool(false));
     body_map.insert(String::from("options"), serde_json::Value::Object(options_map));
-    body_map.insert(String::from("tools"), tools);
+    // Bridge / banter / summarize paths pass disable_tools=true so the small
+    // model can't reflexively fire a tool call instead of giving plain text.
+    if !disable_tools.unwrap_or(false) {
+        body_map.insert(String::from("tools"), tools);
+    }
     // Keep the model resident in VRAM for an hour. Ollama's default 5-minute
     // keep_alive forces a ~37s cold reload on every gap >5min, which was the
     // single biggest source of perceived lag.

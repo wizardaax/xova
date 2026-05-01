@@ -13,6 +13,11 @@ export interface ChatMessage {
   image?: string;
   /** User-flagged keepers — surfaced via /pinned. */
   pinned?: boolean;
+  /** Self-evaluation rating fired automatically after each Xova reply.
+   *  hallucinationRisk: 1 (sure) … 5 (likely fabrication).
+   *  answered: did the reply actually address the question?
+   *  notes: short critique from the eval pass. */
+  selfEval?: { answered: boolean; hallucinationRisk: number; notes?: string };
 }
 
 interface Props {

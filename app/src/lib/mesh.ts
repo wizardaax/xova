@@ -115,7 +115,11 @@ async function invokeWithTimeout<T>(cmd: string, args: Record<string, unknown>, 
   ]);
 }
 
-export async function ollamaChat(messages: OllamaMessage[], settings?: OllamaSettings): Promise<OllamaChatResult> {
+export async function ollamaChat(
+  messages: OllamaMessage[],
+  settings?: OllamaSettings,
+  disableTools = false,
+): Promise<OllamaChatResult> {
   const s = settings ?? (await loadOllamaSettings());
   // 3 minutes — covers cold model load + slow CPU inference + tool prefill.
   // Beyond that the model is genuinely stuck and the user deserves an error.
@@ -123,6 +127,7 @@ export async function ollamaChat(messages: OllamaMessage[], settings?: OllamaSet
     messages: JSON.stringify(messages),
     model: s.model,
     numCtx: s.numCtx,
+    disableTools,
   }, 180000);
   return JSON.parse(raw);
 }

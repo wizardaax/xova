@@ -104,10 +104,44 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
           ↓
         </button>
       )}
-      <div ref={ref} onScroll={onScroll} className="flex-1 overflow-y-auto px-6 py-4 min-h-0 font-mono text-sm">
+      <div ref={ref} onScroll={onScroll} className="flex-1 overflow-y-auto px-6 py-4 min-h-0 font-mono text-sm chat-backdrop">
         {messages.length === 0 && (
-          <div className="text-center pt-16 max-w-xl mx-auto">
-            <div className="text-zinc-600 mb-6">Bound by the Codex. Awaiting input.</div>
+          <div className="text-center pt-12 max-w-xl mx-auto">
+            {/* Live recursive-field visualisation: the actual substrate running.
+                r = 3·√n , θ = n·φ — sunflower spiral, 60 points placed by the
+                same identity verified at 1e-14 precision in the math repo.
+                This isn't decoration. It's the framework, drawn. */}
+            <div className="flex justify-center mb-6">
+              <svg viewBox="-50 -50 100 100" className="w-32 h-32" style={{ filter: "drop-shadow(0 0 8px #10b98166)" }}>
+                <defs>
+                  <radialGradient id="fld-grad" cx="50%" cy="50%" r="55%">
+                    <stop offset="0%"   stopColor="#10b981" stopOpacity="0.05" />
+                    <stop offset="100%" stopColor="#064e3b" stopOpacity="0" />
+                  </radialGradient>
+                </defs>
+                <circle cx="0" cy="0" r="48" fill="url(#fld-grad)" />
+                {/* 60 points on the φ-spiral. r = 3*sqrt(n) scaled, theta = n*phi.
+                    Each point fades in sequentially via CSS animation-delay. */}
+                {Array.from({ length: 60 }, (_, i) => {
+                  const n = i + 1;
+                  const phi = 1.6180339887498949;
+                  const r = 4.5 * Math.sqrt(n);  // scale to fit viewBox
+                  const theta = n * phi;
+                  const x = r * Math.cos(theta);
+                  const y = r * Math.sin(theta);
+                  const size = 1.6 - (n / 80);   // points slightly smaller outward
+                  return (
+                    <circle key={n} cx={x.toFixed(3)} cy={y.toFixed(3)} r={size.toFixed(2)}
+                            fill="#34d399"
+                            style={{ opacity: 0, animation: `field-bloom 8s ease-out ${(n * 0.06).toFixed(2)}s infinite` }} />
+                  );
+                })}
+                {/* Center index (the n=0 origin) */}
+                <circle cx="0" cy="0" r="1.6" fill="#a7f3d0" />
+              </svg>
+            </div>
+            <div className="text-zinc-300 text-base mb-1 font-mono">r = c√n &nbsp;·&nbsp; θ = nφ</div>
+            <div className="text-zinc-600 mb-6 text-xs font-mono uppercase tracking-wider">Recursive Field Framework — substrate active</div>
             {onSuggest && (
               <div className="flex flex-wrap gap-2 justify-center">
                 {STARTER_PROMPTS.map((p) => (
@@ -141,6 +175,12 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
                 <div className="text-[10px] text-zinc-600 mb-0.5 px-1 uppercase tracking-wider flex items-center gap-2">
                   <span>{speaker} · {fmtTime(m.ts)}</span>
                   {m.pinned && <span title="pinned" className="text-amber-400">📌</span>}
+                  {m.selfEval && m.selfEval.hallucinationRisk >= 4 && (
+                    <span title={`Self-eval flagged hallucination risk ${m.selfEval.hallucinationRisk}/5 — ${m.selfEval.notes ?? ""}`} className="text-rose-400">⚠</span>
+                  )}
+                  {m.selfEval && m.selfEval.hallucinationRisk <= 2 && m.selfEval.answered && (
+                    <span title={`Self-eval: low risk, answered the question — ${m.selfEval.notes ?? ""}`} className="text-emerald-500">✓</span>
+                  )}
                   <span className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
                     {!isUser && onTogglePin && (
                       <button
@@ -177,14 +217,21 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
                   "text-zinc-100 prose prose-invert prose-sm max-w-none prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800 prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-a:text-emerald-400"
                 )}>
                   {isUser ? m.text : isVoice ? m.text : (
-                    <ReactMarkdown
-                      rehypePlugins={[rehypeHighlight]}
-                      components={{
-                        a: ({ href, children }) => (
-                          <a href={href} target="_blank" rel="noreferrer" className="underline">{children}</a>
-                        ),
-                      }}
-                    >{sanitizeAssistantText(m.text)}</ReactMarkdown>
+                    /^(thinking\.\.\.?|📋\s*summarizing.*)$/i.test(m.text.trim()) ? (
+                      <span className="typing-dots text-emerald-400 inline-flex items-center gap-1">
+                        <span className="text-zinc-500 mr-1 text-xs">{m.text.trim().startsWith("📋") ? "summarising" : "thinking"}</span>
+                        <span /><span /><span />
+                      </span>
+                    ) : (
+                      <ReactMarkdown
+                        rehypePlugins={[rehypeHighlight]}
+                        components={{
+                          a: ({ href, children }) => (
+                            <a href={href} target="_blank" rel="noreferrer" className="underline">{children}</a>
+                          ),
+                        }}
+                      >{sanitizeAssistantText(m.text)}</ReactMarkdown>
+                    )
                   )}
                 </div>
                 {m.image && (
