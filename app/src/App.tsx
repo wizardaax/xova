@@ -409,7 +409,7 @@ function App() {
         });
         const summary = String(visionText || "").trim().split("\n")[0]?.slice(0, 240) ?? "(no description)";
         setMessages((prev) => [...prev, {
-          id: `screen-watch-${Date.now()}-${seq}`,
+          id: `screen-watch-${Date.now()}-${Math.random().toString(36).slice(2,5)}-${seq}`,
           role: "xova",
           ts: Date.now(),
           text: `👁 _watch #${seq}_  ${summary}`,
@@ -466,7 +466,7 @@ function App() {
       const isImage = file.type.startsWith("image/") || /\.(png|jpg|jpeg|gif|webp|bmp)$/.test(lower);
       if (isImage) {
         setMessages((prev) => [...prev, {
-          id: `up-img-${Date.now()}`, role: "user", ts: Date.now(),
+          id: `up-img-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "user", ts: Date.now(),
           text: `📎 ${file.name || "image"}`, image: savedPath,
         }]);
         pushActivity("running vision on uploaded image");
@@ -476,12 +476,12 @@ function App() {
             prompt: "Describe this image in detail. Be factual.",
           });
           setMessages((prev) => [...prev, {
-            id: `up-vis-${Date.now()}`, role: "xova", ts: Date.now(),
+            id: `up-vis-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: visionText,
           }]);
         } catch (e) {
           setMessages((prev) => [...prev, {
-            id: `up-err-${Date.now()}`, role: "xova", ts: Date.now(),
+            id: `up-err-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `vision failed: ${e instanceof Error ? e.message : String(e)}`,
           }]);
         }
@@ -491,12 +491,12 @@ function App() {
           const text = await invoke<string>("xova_extract_text", { path: savedPath });
           const preview = text.length > 1200 ? text.slice(0, 1200) + `… [truncated ${text.length - 1200} chars]` : text;
           setMessages((prev) => [...prev, {
-            id: `up-txt-${Date.now()}`, role: "user", ts: Date.now(),
+            id: `up-txt-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "user", ts: Date.now(),
             text: `📎 ${file.name}\n\n${preview}`,
           }]);
         } catch (e) {
           setMessages((prev) => [...prev, {
-            id: `up-err-${Date.now()}`, role: "xova", ts: Date.now(),
+            id: `up-err-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `couldn't read ${file.name}: ${e instanceof Error ? e.message : String(e)}`,
           }]);
         }
@@ -518,7 +518,7 @@ function App() {
       if (!detail.path) return;
       pushActivity(`snapshot: ${detail.filename}`);
       setMessages((prev) => [...prev, {
-        id: `snap-${Date.now()}`, role: "user", ts: Date.now(),
+        id: `snap-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "user", ts: Date.now(),
         text: `📸 ${detail.filename ?? "snapshot"}`, image: detail.path,
       }]);
       try {
@@ -527,12 +527,12 @@ function App() {
           prompt: "Describe this snapshot in detail. Be factual.",
         });
         setMessages((prev) => [...prev, {
-          id: `snap-vis-${Date.now()}`, role: "xova", ts: Date.now(),
+          id: `snap-vis-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: visionText,
         }]);
       } catch (err) {
         setMessages((prev) => [...prev, {
-          id: `snap-err-${Date.now()}`, role: "xova", ts: Date.now(),
+          id: `snap-err-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `vision failed: ${err instanceof Error ? err.message : String(err)}`,
         }]);
       }
@@ -631,7 +631,7 @@ function App() {
         if (cancelled) return;
         const text = stripImpersonation((reply.type === "content" ? reply.text : "").trim().replace(/^["']|["']$/g, ""));
         if (!text) return;
-        setMessages((prev) => [...prev, { id: `idle-${Date.now()}`, role: "xova", ts: Date.now(), text }]);
+        setMessages((prev) => [...prev, { id: `idle-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text }]);
         pushActivityRef.current?.(`idle remark: ${text.slice(0, 60)}`);
       } catch { /* offline / busy — try again next idle window */ }
     };
@@ -824,7 +824,7 @@ function App() {
                 ], undefined, true /* disableTools — bridge wants plain text */);
                 const text = stripImpersonation(reply.type === "content" ? reply.text : "(non-text response)");
                 if (!cancelled) {
-                  setMessages((prev) => [...prev, { id: `xova-tells-${Date.now()}`, role: "xova", ts: Date.now(), text }]);
+                  setMessages((prev) => [...prev, { id: `xova-tells-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text }]);
                 }
                 // Write back so Jarvis can pick it up
                 await invoke("xova_write_file", {
@@ -908,7 +908,7 @@ function App() {
       }]);
       const chatLine = summariseDispatch(taskType, args, result);
       setMessages((prev) => [...prev, {
-        id: `x-${Date.now()}-${Math.random()}`, role: "xova", ts: Date.now(),
+        id: `x-${Date.now()}-${Math.random().toString(36).slice(2,5)}-${Math.random()}`, role: "xova", ts: Date.now(),
         text: chatLine,
       }]);
     } catch (e) {
@@ -920,7 +920,7 @@ function App() {
         taskType, ts: Date.now(), ok: false, summary: msg,
       }]);
       setMessages((prev) => [...prev, {
-        id: `x-${Date.now()}-${Math.random()}`, role: "xova", ts: Date.now(),
+        id: `x-${Date.now()}-${Math.random().toString(36).slice(2,5)}-${Math.random()}`, role: "xova", ts: Date.now(),
         text: `${taskType} failed: ${msg}`,
       }]);
     } finally {
@@ -929,7 +929,7 @@ function App() {
   }, [dispatch, pushTerminal, pushActivity]);
 
   const onSend = useCallback(async (text: string) => {
-    const userMsg: ChatMessage = { id: `u-${Date.now()}`, role: "user", text, ts: Date.now() };
+    const userMsg: ChatMessage = { id: `u-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "user", text, ts: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
 
     // If the user addresses Jarvis directly ("jarvis ...", "hi jarvis", "hey
@@ -953,7 +953,7 @@ function App() {
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setMessages((prev) => [...prev, {
-          id: `x-${Date.now()}-${Math.random()}`,
+          id: `x-${Date.now()}-${Math.random().toString(36).slice(2,5)}-${Math.random()}`,
           role: "xova",
           ts: Date.now(),
           text: `couldn't reach jarvis: ${msg.slice(0, 200)}`,
@@ -984,12 +984,12 @@ function App() {
       const n = summarizeMatch[1] ? parseInt(summarizeMatch[1], 10) : 30;
       const recent = messages.slice(-n).filter((m) => !m.id.startsWith("slash-"));
       if (recent.length < 4) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "not enough messages to summarize yet" }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "not enough messages to summarize yet" }]);
         return;
       }
       pushActivity(`summarizing last ${recent.length} messages`);
       const placeholder: ChatMessage = {
-        id: `summary-${Date.now()}`, role: "xova", ts: Date.now(),
+        id: `summary-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `📋 summarizing ${recent.length} messages…`,
       };
       setMessages((prev) => [...prev, placeholder]);
@@ -1033,7 +1033,7 @@ function App() {
           { role: "user", content: lastQuestion },
         ], undefined, true /* disableTools — banter is text-only */);
         const xt1 = stripImpersonation(r1.type === "content" ? r1.text : "(no reply)");
-        setMessages((prev) => [...prev, { id: `banter-x-${Date.now()}`, role: "xova", ts: Date.now(), text: xt1 }]);
+        setMessages((prev) => [...prev, { id: `banter-x-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: xt1 }]);
 
         // R2: Xova asks Jarvis. Use the real bridge.
         // CRITICAL: keep the question SHORT (≤12 words, no tool keywords like
@@ -1054,7 +1054,7 @@ function App() {
           { role: "user", content: "Close the conversation warmly." },
         ], undefined, true /* disableTools — banter close is text-only */);
         const xt3 = stripImpersonation(r3.type === "content" ? r3.text : "");
-        if (xt3) setMessages((prev) => [...prev, { id: `banter-end-${Date.now()}`, role: "xova", ts: Date.now(), text: xt3 }]);
+        if (xt3) setMessages((prev) => [...prev, { id: `banter-end-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: xt3 }]);
         pushActivity("banter complete");
       } catch (e) {
         pushActivity(`banter error: ${e instanceof Error ? e.message : String(e)}`);
@@ -1064,7 +1064,7 @@ function App() {
     if (slash === "/redo" || slash === "/again") {
       const lastUser = [...messages].reverse().find((m) => m.role === "user" && !m.text.startsWith("/"));
       if (!lastUser) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "no previous message to redo" }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "no previous message to redo" }]);
         return;
       }
       onSend(lastUser.text);
@@ -1073,7 +1073,7 @@ function App() {
     if (slash === "/region" || slash === "/snip") {
       try {
         await invoke("xova_run", { command: "start ms-screenclip:", cwd: null, elevated: false });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "snipping tool opened — select region, then Ctrl+V here to send for vision",
         }]);
       } catch (e) { pushActivity(`region failed: ${e}`); }
@@ -1083,7 +1083,7 @@ function App() {
       try {
         const raw = await invoke<string>("xova_backup");
         const r = JSON.parse(raw);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `backup → ${r.destination}` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `backup → ${r.destination}` }]);
       } catch (e) { pushActivity(`backup failed: ${e}`); }
       return;
     }
@@ -1095,7 +1095,7 @@ function App() {
           return `### ${speaker} · ${ts}\n\n${m.text}\n`;
         }).join("\n");
         const path = await invoke<string>("xova_export_chat", { content: md, format: "md" });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `chat exported → ${path}` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `chat exported → ${path}` }]);
         await invoke("xova_notify", { title: "Chat exported", message: path });
       } catch (e) { pushActivity(`export failed: ${e}`); }
       return;
@@ -1105,7 +1105,7 @@ function App() {
       try {
         const raw = await invoke<string>("xova_enroll_voice", { seconds: 30 });
         const r = JSON.parse(raw);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: r.ok ? `✓ ${r.message}` : `✗ ${r.message}` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: r.ok ? `✓ ${r.message}` : `✗ ${r.message}` }]);
       } catch (e) { pushActivity(`enroll failed: ${e}`); }
       return;
     }
@@ -1114,7 +1114,7 @@ function App() {
       // keep a running scrapbook of useful answers.
       const lastReply = [...messages].reverse().find((m) => m.role === "xova");
       if (!lastReply) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "no reply to save" }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "no reply to save" }]);
         return;
       }
       try {
@@ -1123,7 +1123,7 @@ function App() {
         try { existing = await invoke<string>("xova_read_file", { path }); } catch {}
         const block = `\n---\n### ${new Date(lastReply.ts).toLocaleString()}\n\n${lastReply.text}\n`;
         await invoke("xova_write_file", { path, content: existing + block });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `saved → ${path}` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `saved → ${path}` }]);
       } catch (e) { pushActivity(`save failed: ${e}`); }
       return;
     }
@@ -1136,7 +1136,7 @@ function App() {
         try { existing = await invoke<string>("xova_read_file", { path }); } catch {}
         const line = `- ${new Date().toLocaleString()} — ${note}\n`;
         await invoke("xova_write_file", { path, content: existing + line });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `📝 noted` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `📝 noted` }]);
       } catch (e) { pushActivity(`note failed: ${e}`); }
       return;
     }
@@ -1144,15 +1144,15 @@ function App() {
       try {
         const text = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\notes.md" });
         const trimmed = text.length > 4000 ? "[…older notes truncated]\n" + text.slice(-4000) : text;
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: trimmed || "no notes yet — /note <text> to add" }]);
-      } catch { setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "no notes yet — /note <text> to add" }]); }
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: trimmed || "no notes yet — /note <text> to add" }]);
+      } catch { setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "no notes yet — /note <text> to add" }]); }
       return;
     }
     if (slash === "/clear-snippets") {
       if (!window.confirm("delete all saved snippets?")) return;
       try {
         await invoke("xova_write_file", { path: "C:\\Xova\\memory\\snippets.md", content: "" });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "snippets cleared" }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "snippets cleared" }]);
       } catch (e) { pushActivity(`clear-snippets failed: ${e}`); }
       return;
     }
@@ -1160,14 +1160,14 @@ function App() {
       if (!window.confirm("delete all notes?")) return;
       try {
         await invoke("xova_write_file", { path: "C:\\Xova\\memory\\notes.md", content: "" });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "notes cleared" }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "notes cleared" }]);
       } catch (e) { pushActivity(`clear-notes failed: ${e}`); }
       return;
     }
     if (slash === "/clear-pins" || slash === "/unpin-all") {
       const pinned = messages.filter((m) => m.pinned).length;
       if (pinned === 0) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "no pins to clear" }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "no pins to clear" }]);
         return;
       }
       if (!window.confirm(`unpin all ${pinned} pinned messages?`)) return;
@@ -1179,8 +1179,8 @@ function App() {
       try {
         const text = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\snippets.md" });
         const trimmed = text.length > 4000 ? text.slice(-4000) + "\n\n[…older snippets truncated]" : text;
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: trimmed || "no snippets yet — use /save to add one" }]);
-      } catch { setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "no snippets yet — use /save to add one" }]); }
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: trimmed || "no snippets yet — use /save to add one" }]);
+      } catch { setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "no snippets yet — use /save to add one" }]); }
       return;
     }
     // /template <name>  — expand a saved template (sends as new message).
@@ -1190,7 +1190,7 @@ function App() {
       try {
         const tpls = await loadMemory<Record<string, string>>("xova_templates") ?? {};
         const names = Object.keys(tpls);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: names.length === 0
             ? "no templates yet — save one with /template-save <name> <prompt>"
             : "templates:\n" + names.map((n) => `  /template ${n}  → ${tpls[n].slice(0, 60)}${tpls[n].length > 60 ? "…" : ""}`).join("\n"),
@@ -1207,7 +1207,7 @@ function App() {
         tpls[name] = body;
         await saveMemory("xova_templates", tpls);
         await refreshTemplates();
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `saved template '${name}'` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `saved template '${name}'` }]);
       } catch (e) { pushActivity(`template-save failed: ${e}`); }
       return;
     }
@@ -1217,13 +1217,13 @@ function App() {
       try {
         const tpls = await loadMemory<Record<string, string>>("xova_templates") ?? {};
         if (!(name in tpls)) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `no template '${name}'` }]);
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `no template '${name}'` }]);
           return;
         }
         delete tpls[name];
         await saveMemory("xova_templates", tpls);
         await refreshTemplates();
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `deleted template '${name}'` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `deleted template '${name}'` }]);
       } catch (e) { pushActivity(`template-delete failed: ${e}`); }
       return;
     }
@@ -1235,7 +1235,7 @@ function App() {
         const tpls = await loadMemory<Record<string, string>>("xova_templates") ?? {};
         const body = tpls[name];
         if (!body) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `no template '${name}' — list with /templates` }]);
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `no template '${name}' — list with /templates` }]);
           return;
         }
         const expanded = extra ? `${body}\n\n${extra}` : body;
@@ -1256,7 +1256,7 @@ function App() {
             const snippet = m.text.length > 200 ? m.text.slice(0, 200) + "…" : m.text;
             return `- [${speaker} · ${ts}] ${snippet}`;
           }).join("\n");
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: summary }]);
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: summary }]);
       return;
     }
     if (slash === "/stats") {
@@ -1267,7 +1267,7 @@ function App() {
       const dispatchCount = log.length;
       const firstTs = messages.length > 0 ? messages[0].ts : Date.now();
       const sessionMins = Math.round((Date.now() - firstTs) / 60000);
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `stats:\n  total messages: ${total}\n  yours: ${userMsgs}\n  voice (you): ${voiceUser}\n  voice (jarvis): ${voiceJarvis}\n  dispatches: ${dispatchCount}\n  session age: ${sessionMins} min`,
       }]);
       return;
@@ -1288,7 +1288,7 @@ function App() {
         setCurrentSession(name);
         await refreshSessionList();
         await refreshRecallIndex();
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `saved session '${name}' (${messages.length} messages)` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `saved session '${name}' (${messages.length} messages)` }]);
       } catch (e) { pushActivity(`save-session failed: ${e}`); }
       return;
     }
@@ -1298,7 +1298,7 @@ function App() {
       try {
         const data = await loadMemory<SessionState>(`session_${name}`);
         if (!data || !Array.isArray(data.messages)) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `no session '${name}' — list with /sessions` }]);
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `no session '${name}' — list with /sessions` }]);
           return;
         }
         if (!window.confirm(`load session '${name}' (${data.messages.length} messages)? current chat will be archived.`)) return;
@@ -1324,10 +1324,10 @@ function App() {
       try {
         const idx = await loadMemory<string[]>("session_index") ?? [];
         if (idx.length === 0) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "no saved sessions — use /save-session <name>" }]);
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "no saved sessions — use /save-session <name>" }]);
           return;
         }
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `saved sessions (${idx.length}):\n` + idx.map((n) => `  /load-session ${n}`).join("\n"),
         }]);
       } catch (e) { pushActivity(`sessions failed: ${e}`); }
@@ -1355,7 +1355,7 @@ function App() {
       // Toggle pinned on the most recent xova message.
       const lastReplyIdx = [...messages].map((m, i) => ({ m, i })).reverse().find(({ m }) => m.role === "xova")?.i;
       if (lastReplyIdx === undefined) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "no reply to pin" }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "no reply to pin" }]);
         return;
       }
       setMessages((prev) => prev.map((m, i) => i === lastReplyIdx ? { ...m, pinned: !m.pinned } : m));
@@ -1371,7 +1371,7 @@ function App() {
             const snippet = m.text.length > 300 ? m.text.slice(0, 300) + "…" : m.text;
             return `📌 ${ts}\n${snippet}`;
           }).join("\n\n");
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text }]);
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text }]);
       return;
     }
     const launchMatch = text.trim().match(/^\/launch\s+(\S+)$/i);
@@ -1382,7 +1382,7 @@ function App() {
         // (was: `start "" "${target}"` which flashed a terminal on some configs)
         const cmd = `explorer "${target}"`;
         await invoke("xova_run", { command: cmd, cwd: null, elevated: false });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `launched ${target}` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `launched ${target}` }]);
       } catch (e) { pushActivity(`launch failed: ${e}`); }
       return;
     }
@@ -1393,14 +1393,14 @@ function App() {
       // (less importantly) could be a command-injection vector. cmd has no
       // canonical escape for " inside a quoted string; safest path is to refuse.
       if (rawPath.includes('"')) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `/edit refused: path contains a double-quote character (cmd parsing unsafe). Rename or move the file first.`,
         }]);
         return;
       }
       try {
         await invoke("xova_run", { command: `notepad "${rawPath}"`, cwd: null, elevated: false });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `opened ${rawPath} in notepad` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `opened ${rawPath} in notepad` }]);
       } catch (e) { pushActivity(`edit failed: ${e}`); }
       return;
     }
@@ -1408,7 +1408,7 @@ function App() {
       try {
         // Path has no spaces — drop the inner quotes for cmd /C robustness.
         await invoke("xova_run", { command: "start cmd.exe /K cd /d C:\\Xova\\app", cwd: null, elevated: false });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "opened terminal at C:\\Xova\\app" }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: "opened terminal at C:\\Xova\\app" }]);
       } catch (e) { pushActivity(`cmd failed: ${e}`); }
       return;
     }
@@ -1423,15 +1423,15 @@ function App() {
         if (parsed.mesh_connected) lines.push("  ✓ mesh"); else lines.push("  ✗ mesh");
         if (parsed.gpu_free_mb !== undefined) lines.push(`  gpu free: ${parsed.gpu_free_mb} MB`);
         if (parsed.model) lines.push(`  model: ${parsed.model}`);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: lines.join("\n") }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: lines.join("\n") }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `status unavailable: ${e instanceof Error ? e.message : String(e)}` }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `status unavailable: ${e instanceof Error ? e.message : String(e)}` }]);
       }
       return;
     }
     if (slash === "/version") {
       const buildTs = (window as any).__BUILD_TS__ || "unknown";
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `Xova 0.1.0\nbuilt: ${buildTs}\nbundle: vite + react + tauri 2`,
       }]);
       return;
@@ -1440,7 +1440,7 @@ function App() {
     if (recallMatch) {
       const q = recallMatch[1]?.trim();
       if (!q) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `Recall index: ${recallIndexRef.current.length} entries across ${new Set(recallIndexRef.current.map((e) => e.session)).size} sessions. Use /recall <query> to search.`,
         }]);
         return;
@@ -1455,7 +1455,7 @@ function App() {
             const snippet = h.text.length > 220 ? h.text.slice(0, 220) + "…" : h.text;
             return `**[${h.session} · ${speaker} · ${when}]**\n${snippet}`;
           }).join("\n\n");
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: out }]);
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: out }]);
       return;
     }
     // /plan <goal> — Xova drafts a numbered plan for a multi-step goal and
@@ -1467,7 +1467,7 @@ function App() {
       const goal = planMatch[1].trim();
       pushActivity(`planning: ${goal.slice(0, 80)}`);
       const placeholder: ChatMessage = {
-        id: `plan-${Date.now()}`, role: "xova", ts: Date.now(),
+        id: `plan-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🗺 drafting plan for: ${goal}…`,
       };
       setMessages((prev) => [...prev, placeholder]);
@@ -1514,7 +1514,7 @@ function App() {
     if (slash === "/plan?" || slash === "/plan") {
       const plan = await loadMemory<{ goal: string; steps: string[]; current: number }>("xova_active_plan");
       if (!plan || !plan.steps?.length) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "No active plan. Use `/plan <goal>` to draft one.",
         }]);
         return;
@@ -1523,7 +1523,7 @@ function App() {
         const marker = i < plan.current ? "✓" : i === plan.current ? "▶" : "·";
         return `${marker} ${i + 1}. ${s}`;
       }).join("\n");
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🗺 Active plan: ${plan.goal}\n\n${lines}\n\nProgress: ${plan.current}/${plan.steps.length} steps. \`/run\` to advance, \`/plan-clear\` to drop.`,
       }]);
       return;
@@ -1531,7 +1531,7 @@ function App() {
     if (slash === "/run") {
       const plan = await loadMemory<{ goal: string; steps: string[]; current: number }>("xova_active_plan");
       if (!plan || !plan.steps?.length) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "No active plan to run. Use `/plan <goal>` first.",
         }]);
         return;
@@ -1543,12 +1543,12 @@ function App() {
           const parent = stack.pop()!;
           await saveMemory("xova_plan_stack", stack);
           await saveMemory("xova_active_plan", parent);
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `✓ Sub-plan "${plan.goal}" complete. Resumed parent: ${parent.goal} (${parent.current}/${parent.steps.length}). \`/run\` to continue.`,
           }]);
           logForgeEvent("goal-auto-pop", `${plan.goal} → ${parent.goal}`);
         } else {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `🗺 Plan "${plan.goal}" complete (${plan.steps.length}/${plan.steps.length} steps). Goal stack empty.`,
           }]);
           await saveMemory("xova_active_plan", null);
@@ -1559,7 +1559,7 @@ function App() {
       const step = plan.steps[plan.current];
       const newPlan = { ...plan, current: plan.current + 1 };
       await saveMemory("xova_active_plan", newPlan);
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `▶ Step ${plan.current + 1}/${plan.steps.length}: ${step}\n\nExecuting now…`,
       }]);
       // Fire the step as a normal chat message via onSend so it goes through
@@ -1569,7 +1569,7 @@ function App() {
     }
     if (slash === "/plan-clear") {
       try { await saveMemory("xova_active_plan", null); await saveMemory("xova_plan_stack", []); } catch {}
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: "Plan and goal stack cleared.",
       }]);
       return;
@@ -1582,7 +1582,7 @@ function App() {
       const stack = (await loadMemory<Array<{goal:string;steps:string[];current:number}>>("xova_plan_stack")) ?? [];
       const active = await loadMemory<{goal:string;steps:string[];current:number}>("xova_active_plan");
       if (!active && stack.length === 0) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "Goal stack empty. Use /plan <goal> to start one.",
         }]);
         return;
@@ -1596,7 +1596,7 @@ function App() {
         const indent = "  ".repeat(stack.length);
         lines.push(`${indent}▶ ${active.goal} (${active.current}/${active.steps.length} — active)`);
       }
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🗺 Goal stack (depth ${stack.length + (active ? 1 : 0)}):\n\n${lines.join("\n")}\n\n/run advances the active plan, /pop-goal drops it and resumes parent.`,
       }]);
       return;
@@ -1610,7 +1610,7 @@ function App() {
       if (active) stack.push(active);
       await saveMemory("xova_plan_stack", stack);
       await saveMemory("xova_active_plan", null);
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `↑ Pushed parent goal onto stack (depth ${stack.length}). Drafting sub-plan for: ${goal}`,
       }]);
       logForgeEvent("goal-push", goal, { stack_depth: stack.length });
@@ -1620,7 +1620,7 @@ function App() {
     if (slash === "/pop-goal") {
       const stack = (await loadMemory<Array<{goal:string;steps:string[];current:number}>>("xova_plan_stack")) ?? [];
       if (stack.length === 0) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "Goal stack is empty — nothing to pop.",
         }]);
         return;
@@ -1628,19 +1628,19 @@ function App() {
       const parent = stack.pop()!;
       await saveMemory("xova_plan_stack", stack);
       await saveMemory("xova_active_plan", parent);
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `↓ Popped — resumed parent: ${parent.goal} (${parent.current}/${parent.steps.length} done). Run /run to continue.`,
       }]);
       logForgeEvent("goal-pop", parent.goal);
       return;
     }
     if (slash === "/consolidate") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: "🧠 consolidating memory — distilling durable facts about you from this conversation…",
       }]);
       await consolidateMemory(messages);
       const count = (await loadMemory<string[]>("xova_standing_facts") ?? []).length;
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `Consolidation complete — ${count} standing facts kept. Run /facts to view them.`,
       }]);
       return;
@@ -1648,12 +1648,12 @@ function App() {
     if (slash === "/facts") {
       const facts = standingFacts;
       if (facts.length === 0) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "No standing facts yet. Run /consolidate after a substantive conversation, or wait — the auto-consolidation fires every ~40 messages.",
         }]);
         return;
       }
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🧠 Standing facts (${facts.length}) — what Xova has learned about you:\n\n` + facts.map((f, i) => `${i + 1}. ${f}`).join("\n"),
       }]);
       return;
@@ -1671,10 +1671,10 @@ function App() {
       const n = parseInt(lucasMatch[1], 10);
       try {
         const v = RFF.lucas(n);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `L(${n}) = **${v}**\n\n*via recursive-field-math-pro closed-form L(n) = round(φⁿ + ψⁿ). Verified at 1e-14 in source library.*`,
         }]);
-      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `lucas: ${e instanceof Error ? e.message : String(e)}` }]); }
+      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `lucas: ${e instanceof Error ? e.message : String(e)}` }]); }
       return;
     }
     const fibMatch = text.trim().match(/^\/fib\s+(\d+)$/i);
@@ -1682,14 +1682,14 @@ function App() {
       const n = parseInt(fibMatch[1], 10);
       try {
         const v = RFF.fib(n);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `F(${n}) = **${v}**\n\n*via Binet closed-form F(n) = (φⁿ - ψⁿ) / √5. Source: recursive-field-math-pro.*`,
         }]);
-      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `fib: ${e instanceof Error ? e.message : String(e)}` }]); }
+      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `fib: ${e instanceof Error ? e.message : String(e)}` }]); }
       return;
     }
     if (slash === "/phi") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `φ (golden ratio) = **${RFF.PHI}**\nψ (conjugate) = **${RFF.PSI}**\n√5 = **${RFF.SQRT5}**\nφ + ψ = ${RFF.PHI + RFF.PSI} (= 1)\nφ × ψ = ${RFF.PHI * RFF.PSI} (= -1)\n\n*Roots of x² − x − 1 = 0. Substrate constants from recursive-field-math-pro.*`,
       }]);
       return;
@@ -1700,10 +1700,10 @@ function App() {
       try {
         const { r, theta } = RFF.rTheta(n);
         const area = RFF.annularArea(n);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `Field point n=${n}\nr = ${r.toFixed(6)}  (= ${RFF.ROOT_SCALE} × √${n})\nθ = ${theta.toFixed(6)} rad  (= ${n} × φ)\nannular area to previous = ${area.toFixed(6)}  (constant ${RFF.ROOT_SCALE}²π = ${(RFF.ROOT_SCALE*RFF.ROOT_SCALE*Math.PI).toFixed(6)})\n\n*Theorem 3, rff_geometric_invariants.tex.*`,
         }]);
-      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `r-theta: ${e instanceof Error ? e.message : String(e)}` }]); }
+      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `r-theta: ${e instanceof Error ? e.message : String(e)}` }]); }
       return;
     }
     const cassMatch = text.trim().match(/^\/cassini\s+(\d+)$/i);
@@ -1711,7 +1711,7 @@ function App() {
       const n = parseInt(cassMatch[1], 10);
       const residue = RFF.cassiniResidue(n);
       const rhs = 4 * Math.pow(-1, n);
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `Cassini-style identity for n=${n}:\nL(${n})² − 5·F(${n})² = ${RFF.lucas(n)*RFF.lucas(n) - 5*RFF.fib(n)*RFF.fib(n)}\n4·(−1)^${n} = ${rhs}\nresidue (should be 0) = **${residue}**\n\n*Theorem 2, rff_geometric_invariants.tex.*`,
       }]);
       return;
@@ -1721,11 +1721,11 @@ function App() {
     if (ternMatch) {
       try {
         const { result, trace } = evalTernExpression(ternMatch[1]);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `${trace}  (numeric ${result})\n\n*Balanced ternary {-1, 0, +1}. Source: ziltrix-sch-core.*`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `tern: ${e instanceof Error ? e.message : String(e)}\nUsage: /tern T AND F   |   /tern NOT U   |   /tern +1 XOR -1`,
         }]);
       }
@@ -1742,10 +1742,10 @@ function App() {
       pushActivity(`mesh-dispatch ${taskType} ${JSON.stringify(args)}`);
       try {
         const result = await dispatchMesh(taskType, args);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🛰 mesh dispatch → ${taskType}\n\n\`\`\`json\n${JSON.stringify(result, null, 2).slice(0, 2000)}\n\`\`\`\n\n*Source: Snell-Vern-Hybrid-Drive-Matrix mesh.*`,
         }]);
-      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `mesh-dispatch failed: ${e instanceof Error ? e.message : String(e)}` }]); }
+      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `mesh-dispatch failed: ${e instanceof Error ? e.message : String(e)}` }]); }
       return;
     }
     const meshCascadeMatch = text.trim().match(/^\/mesh-cascade\s+(\S+)(?:\s+(.+))?$/i);
@@ -1757,10 +1757,10 @@ function App() {
       }
       try {
         const result = await cascadeMesh(taskType, args);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🛰 mesh cascade → ${taskType}: ${result.aggregate.ok} ok / ${result.aggregate.errors} err / ${result.aggregate.skipped} skipped (fanout ${result.fanout_count})\n\n\`\`\`json\n${JSON.stringify(result.results, null, 2).slice(0, 2000)}\n\`\`\``,
         }]);
-      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `mesh-cascade failed: ${e instanceof Error ? e.message : String(e)}` }]); }
+      } catch (e) { setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `mesh-cascade failed: ${e instanceof Error ? e.message : String(e)}` }]); }
       return;
     }
     // SCE-88 occupancy report
@@ -1768,14 +1768,14 @@ function App() {
       const stats = getSce88Stats();
       const total = getSce88TotalEvents();
       if (total === 0) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "SCE-88 tally: no events yet this session. Each runtime event auto-tags against the 22×4 coherence stack as it fires.\n\nNames match the canonical validator at github.com/wizardaax/SCE-88/blob/main/validation/validator.py",
         }]);
         return;
       }
       const intelPct = stats.filter((s) => s.band === "intelligence").reduce((a, s) => a + s.pct, 0);
       const lines = stats.map((s) => `L${String(s.level).padStart(2)} ${s.band === "intelligence" ? "🧠" : "  "} ${s.name.padEnd(28)} (${s.group}): ${s.count} hits, ${s.pct.toFixed(1)}%`).join("\n");
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🏛 SCE-88 occupancy — this session, ${total} tagged events across the 22×4 stack\n\n${lines}\n\nIntelligence band (L17–22, the native intelligence/continuity tier per spec): **${intelPct.toFixed(1)}%** of activity.\n\n*Names mirror the canonical validator.py LEVELS sequence. Source: github.com/wizardaax/SCE-88*`,
       }]);
       return;
@@ -1795,13 +1795,13 @@ function App() {
       const n = parseInt(simMatch[1], 10);
       const sim = SIM_GALLERY.find((s) => s.n === n);
       if (!sim) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `No sim ${n}. Available: ${SIM_GALLERY.map((s) => `${s.n}: ${s.title}`).join("\n")}`,
         }]);
         return;
       }
       const path = `D:\\github\\wizardaax\\sim_outputs\\${sim.file}`;
-      setMessages((prev) => [...prev, { id: `sim-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `sim-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🌀 ${sim.title}\n\n*From run_all_simulations.py — visualises the working substrate of the framework.*`,
         image: path,
       }]);
@@ -1826,7 +1826,7 @@ function App() {
           for (const e of idx.entries) { byRoot[e.root] = (byRoot[e.root] ?? 0) + 1; byExt[e.ext] = (byExt[e.ext] ?? 0) + 1; }
           const rootLines = Object.entries(byRoot).map(([k, v]) => `  ${v.toString().padStart(4)}  ${k}`).join("\n");
           const extLines = Object.entries(byExt).map(([k, v]) => `${k}: ${v}`).join("  ·  ");
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `📚 Corpus index — ${idx.count} entries (built ${idx.generated_at_iso})\n\nBy root:\n${rootLines}\n\nBy extension: ${extLines}\n\nSearch with \`/corpus <query>\`.`,
           }]);
           return;
@@ -1835,7 +1835,7 @@ function App() {
         const stop = new Set(["the","and","but","with","this","that","what","when","where","how","why","you","are","for","not","can","get","let","its","was","has","have","had","does","did","into","from","over","under","about","than","then","also","like","just","your","mine","ours","they","them","there","here","some","much","more","most","very","such","each","every","these","those","being","been","were"]);
         const tokens = Array.from(new Set((q.toLowerCase().match(/\b[a-z0-9][a-z0-9]{2,}\b/g) ?? []).filter((t) => !stop.has(t))));
         if (tokens.length === 0) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `Empty query after stopword filter. Try a more specific term.` }]);
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `Empty query after stopword filter. Try a more specific term.` }]);
           return;
         }
         const threshold = tokens.length >= 2 ? 2 : 1;
@@ -1852,7 +1852,7 @@ function App() {
         scored.sort((a, b) => b.score - a.score || b.entry.mtime - a.entry.mtime);
         const top = scored.slice(0, 12);
         if (top.length === 0) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `No matches in corpus for "${q}".  (${idx.count} entries scanned, ${tokens.length} significant tokens: ${tokens.join(", ")})`,
           }]);
           return;
@@ -1863,11 +1863,11 @@ function App() {
           const star = h.nameHit ? "★" : " ";
           return `${star} **${h.entry.name}**  _(${root}, ${date}, score ${h.score})_\n   \`${h.entry.path}\`\n   ${h.entry.excerpt.slice(0, 220).replace(/\s+/g, " ")}…`;
         }).join("\n\n");
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `📚 Corpus search — ${top.length} of ${scored.length} match${scored.length === 1 ? "" : "es"} for "${q}":\n\n${lines}\n\n*★ = filename hit. Open path directly to read full content.*`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `Corpus index missing or unreadable: ${e instanceof Error ? e.message : String(e)}\nRebuild with: \`python D:\\temp\\build_corpus_index.py\``,
         }]);
       }
@@ -1879,11 +1879,11 @@ function App() {
         const text = await invoke<string>("xova_read_file", { path: auditPath });
         // Cut to executive summary + verdict (first ~120 lines is exec + section 1.1)
         const exec = text.split("\n").slice(0, 30).join("\n");
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `📋 **wizardaax Ecosystem — Complete Audit (executive summary)**\nSource: ${auditPath} (534 lines total)\n\n${exec}\n\n*Open the file directly for the full audit — 9 repos, chronological lineage, dual-13-agent topology, provenance lockdown status, context for interpretation.*`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `Audit not at expected path: ${e instanceof Error ? e.message : String(e)}`,
         }]);
       }
@@ -1893,7 +1893,7 @@ function App() {
     if (askMatch) {
       const question = askMatch[1]?.trim();
       if (!question) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🧙 **/ask <question>** — summon Opus-class Claude\n\nSubprocesses your local \`claude\` CLI (uses your Claude Code subscription). ~2-15 sec for typical answers, up to a minute for synthesis. Uses your existing plan; no extra billing.\n\nExample: \`/ask explain the AEON brane lensing in 3 sentences\``,
         }]);
         return;
@@ -1906,16 +1906,16 @@ function App() {
         const raw = await invoke<string>("xova_ask_claude", { prompt: question, timeoutSecs: 180 });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         if (wrap.exit !== 0) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `❌ /ask failed (exit ${wrap.exit})\n\n${wrap.stderr || wrap.stdout || "no output"}`,
           }]);
           return;
         }
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🧙 **Opus reply:**\n\n${wrap.stdout}`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `❌ /ask error: ${e instanceof Error ? e.message : String(e)}\n\nIs the \`claude\` CLI on PATH? (Run \`claude --version\` in a terminal to check.)`,
         }]);
       }
@@ -1934,12 +1934,12 @@ function App() {
 
       if (action === "off" || (action === "toggle" && screenWatchActive)) {
         stopScreenWatch();
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `👁 Screen watch **stopped**.`,
         }]);
       } else {
         startScreenWatch(intervalMs);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `👁 Screen watch **started** — capturing every ${intervalMs / 1000}s, one-line summary streamed to chat. Stop with \`/watch off\`.`,
         }]);
       }
@@ -1950,13 +1950,13 @@ function App() {
     if (cycleMatch) {
       const goal = cycleMatch[1]?.trim();
       if (!goal) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🔁 **/cycle <goal>** — fire one pass of the 13-agent cognitive loop\n\nDecomposes the goal into TaskTypes, dispatches across the Snell-Vern fleet, applies SCE-88 coherence gating, and writes a SHA-256 + crest-stamped JSON log to \`C:\\Xova\\memory\\cycles\\\`.\n\nExamples:\n  \`/cycle audit lucas formula\`\n  \`/cycle validate phase coherence\`\n  \`/cycle observe field and remember\``,
         }]);
         return;
       }
       // Pending message so the user sees something while Python warms up
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🔁 Cognitive cycle running: _"${goal}"_ …`,
       }]);
       try {
@@ -1969,7 +1969,7 @@ function App() {
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         if (wrap.exit !== 0) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `❌ Cycle failed (exit ${wrap.exit})\n\n${wrap.stderr || wrap.stdout}`,
           }]);
           return;
@@ -2145,7 +2145,7 @@ function App() {
             .join("\n  ");
           fieldBlock = `\n\n**🚀 Field Weaver — AEON Engine v2.1**  ωₙ=${summary.aeon_omega_n?.toExponential(2)} (${freqMHz} MHz)  n₃=${summary.aeon_n3_medium?.toFixed(4)}  k=${summary.aeon_coupling_k?.toExponential(2)}\n  ${series}\n  validation vs PhaseII PDF: ${matched} max_err=${errPct}%`;
         }
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text:
 `🔁 **Cycle complete** — ${summary.crest}
 
@@ -2162,14 +2162,14 @@ function App() {
 *Stamp + hash are reproducible. Re-run \`verify_log()\` on the JSON in 100 years and it'll still verify.*`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `❌ Cycle bridge error: ${e instanceof Error ? e.message : String(e)}`,
         }]);
       }
       return;
     }
     if (slash === "/cognitive" || slash === "/meta-engine" || slash === "/cognitive-cycle") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text:
 `🧠 The cognitive cycle — second 13-agent enumeration
 
@@ -2198,7 +2198,7 @@ Snell-Vern's 13 are *concrete*, this set is *meta*. Both are F₇ = 13. Try \`/a
       return;
     }
     if (slash === "/agents" || slash === "/agent-map") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text:
 `🛰 Snell-Vern mesh — 13 canonical agents and their Xova runtime mirrors
 
@@ -2228,7 +2228,7 @@ Source: github.com/wizardaax/Snell-Vern-Hybrid-Drive-Matrix/src/snell_vern_matri
       return;
     }
     if (slash === "/repos" || slash === "/stack-status") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text:
 `🏛 Recursive Field Framework — stack status
 
@@ -2256,7 +2256,7 @@ Slash to view any sim: /sim 1..7  ·  /sims to list  ·  /phase to see substrate
       return;
     }
     if (slash === "/research") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text:
 `📚 Historical research files at D:\\ root (you can drag-drop any of these into chat to read inline):
 
@@ -2274,7 +2274,7 @@ Live research pipelines (in repo, runnable):
       return;
     }
     if (slash === "/sims" || slash === "/gallery") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🌀 Sim gallery (run \`/sim N\` to view):\n\n` +
               SIM_GALLERY.map((s) => `**${s.n}.** ${s.title}`).join("\n") +
               `\n\n*Generated by D:\\github\\wizardaax\\run_all_simulations.py — one visualisation per repo.*`,
@@ -2295,12 +2295,12 @@ Live research pipelines (in repo, runnable):
           const tag = ext === "md" ? "📄" : ext === "html" ? "🌐" : ext === "py" ? "🐍" : "·";
           return `${tag} \`${name}\``;
         }).join("\n");
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `📜 **Findings** (mirrors wizardaax.github.io/findings)\n\n${rows}\n\n` +
                 `Run \`/finding <name>\` to view content inline. HTML pages link to https://wizardaax.github.io/findings/<name>.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `findings dir not readable: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2309,7 +2309,7 @@ Live research pipelines (in repo, runnable):
     if (slash.startsWith("/finding ") || slash.startsWith("/paper ")) {
       const name = text.trim().split(/\s+/, 2)[1];
       if (!name) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "usage: `/finding <filename>` — e.g. `/finding riemann_phi_clustering_2026_05.md`",
         }]);
         return;
@@ -2322,11 +2322,11 @@ Live research pipelines (in repo, runnable):
           // No terminal launching, no external browser — render inside Xova.
           if (name === "time_travel_navigator.html") {
             setDockTab((t) => t === "navigator" ? null : "navigator");
-            setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+            setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
               text: `🦢 **${name}** — opened in dock (right side, 🦢 tab)`,
             }]);
           } else {
-            setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+            setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
               text: `🌐 **${name}** — interactive page\n\nLive URL: ${url}\nLocal source: \`${path}\`\n\n*Click the URL above to open in browser.*`,
             }]);
           }
@@ -2335,12 +2335,12 @@ Live research pipelines (in repo, runnable):
           const trimmed = content.length > 8000 ? content.slice(0, 8000) + "\n\n[…truncated, full file at " + path + "]" : content;
           const fence = name.endsWith(".py") ? "```python\n" : (name.endsWith(".md") ? "" : "```\n");
           const close = fence ? (fence === "" ? "" : "\n```") : "";
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `${fence === "" ? `# ${name}\n\n` : ""}${fence}${trimmed}${close}`,
           }]);
         }
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot read ${name}: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2349,7 +2349,7 @@ Live research pipelines (in repo, runnable):
     // /navigator (or /swan, /timetravel) — open the time-travel navigator IN-APP as a dock panel
     if (slash === "/navigator" || slash === "/swan" || slash === "/timetravel" || slash === "/time-travel") {
       setDockTab((t) => t === "navigator" ? null : "navigator");
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🦢 **Time-Travel Navigator** — opened in dock panel (right side, 🦢 tab)\n\n` +
               `r = a√n, θ = nφ golden-angle spiral. 97 real events plotted: Holodeck → AEON gravity-flyer → Projex X → 13/13 agents alive. Black swan silhouette rendered as faint watermark behind the spiral. Hover any point for label/timestamp/crest.`,
       }]);
@@ -2362,7 +2362,7 @@ Live research pipelines (in repo, runnable):
         let items: any[] = [];
         try { items = JSON.parse(raw); if (!Array.isArray(items)) items = items?.reminders ?? []; } catch {}
         if (items.length === 0) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: "⏰ no reminders set.",
           }]);
           return;
@@ -2372,11 +2372,11 @@ Live research pipelines (in repo, runnable):
           const ts = r.fire_ts ? new Date(r.fire_ts).toLocaleString() : "?";
           return `  · ${fired}  ${ts}  — ${r.text || r.message || "?"}`;
         }).join("\n");
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `⏰ **Reminders** (${items.length} total)\n${rows}`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot list reminders: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2392,12 +2392,12 @@ Live research pipelines (in repo, runnable):
     if (slash.startsWith("/agent ") || slash === "/agent") {
       const goal = text.replace(/^\/agent\s*/i, "").trim();
       if (!goal) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "usage: `/agent <goal>` — e.g. `/agent list every python file in D:\\temp and report the count`",
         }]);
         return;
       }
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🤖 **Agent loop starting** — goal: \`${goal}\`\n_running up to 8 steps; each step picks a tool autonomously_`,
       }]);
       try {
@@ -2427,11 +2427,11 @@ Live research pipelines (in repo, runnable):
           }).join("\n");
           body = `**Done:** ${d.done}  ·  **Steps:** ${(d.steps || []).length}\n${d.summary ? `**Summary:** ${d.summary}\n` : ""}\n${stepLines}`;
         } catch {}
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🤖 **Agent run complete** ${wrap.exit === 0 ? "✓" : "✗"}\n\n${body}`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `agent failed: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2442,7 +2442,7 @@ Live research pipelines (in repo, runnable):
     if (slash.startsWith("/shell ") || slash === "/shell") {
       const cmd = text.replace(/^\/shell\s*/i, "").trim();
       if (!cmd) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "usage: `/shell <command>` — e.g. `/shell git status` or `/shell cd D:\\github\\wizardaax`",
         }]);
         return;
@@ -2461,16 +2461,16 @@ Live research pipelines (in repo, runnable):
         try {
           const d = JSON.parse(out);
           const fence = "```\n" + (d.stdout || "(no stdout)") + (d.stderr ? "\n--- stderr ---\n" + d.stderr : "") + "\n```";
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `⌨ \`${cmd}\` (cwd: \`${d.cwd_after}\`, exit ${d.exit})\n${fence}`,
           }]);
         } catch {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `shell raw:\n\`\`\`\n${out.slice(0, 2000)}\n\`\`\``,
           }]);
         }
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `shell failed: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2499,11 +2499,11 @@ Live research pipelines (in repo, runnable):
                  `**Suggested threshold:** ${d.calibration.suggested_threshold}/5\n` +
                  `_${d.calibration.reasoning}_`;
         } catch {}
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🎯 **Confidence calibration** ${wrap.exit === 0 ? "✓" : "✗"}\n\n${body}\n\nLog appended to \`C:\\Xova\\memory\\calibration.jsonl\`.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot run calibration: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2528,11 +2528,11 @@ Live research pipelines (in repo, runnable):
                  shardLines + `\n\n**Status:** ${d.status_method}\n` +
                  `**Probe execute() round-trip:** ${d.execute_probe.ok ? "✓" : "✗"} → \`${d.execute_probe.result}\``;
         } catch {}
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🐝 **Swarm** — CellShard fleet + CoherenceGovernor (${wrap.exit === 0 ? "✓" : "✗"})\n\n${body}`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot probe swarm: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2558,11 +2558,11 @@ Live research pipelines (in repo, runnable):
                     `**Deduped (this pass):** User=${j.dedup_savings.User}  World=${j.dedup_savings.World}  Directives=${j.dedup_savings.Directives}\n` +
                     `**Jarvis access counts:** User=${j.access_counts.User}  World=${j.access_counts.World}  Directives=${j.access_counts.Directives}`;
         } catch {}
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🧠↔🎙 **Cross-AI memory sync** ${wrap.exit === 0 ? "✓" : "✗"}\n\n${summary}`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot sync facts: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2578,7 +2578,7 @@ Live research pipelines (in repo, runnable):
           const more = arr.length > limit ? `\n  … ${arr.length - limit} more` : "";
           return `**${label}** (${arr.length})\n${head}${more}`;
         };
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🧠 **Standing facts** — synced ${d.synced_at}\n\n` +
                 fmt("User facts", d.user_facts || []) + "\n\n" +
                 fmt("World facts", d.world_facts || []) + "\n\n" +
@@ -2586,7 +2586,7 @@ Live research pipelines (in repo, runnable):
                 `\n\nRefresh with \`/sync-facts\`. Source: Jarvis SQLite at \`${d.source?.jarvis_db}\`.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `no standing facts yet (run \`/sync-facts\` first): ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2601,11 +2601,11 @@ Live research pipelines (in repo, runnable):
       try {
         const content = await invoke<string>("xova_read_file", { path });
         // Doc is 252 lines / ~10kb — render inline; the chat handles markdown.
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🧠 **AGI Stack Architecture** — single source of truth (\`${path}\`)\n\n${content}`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot read AGI stack doc at ${path}: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2628,11 +2628,11 @@ Live research pipelines (in repo, runnable):
           const desc = n?.description ? ` — ${String(n.description).slice(0, 80)}` : "";
           return `  · \`${label}\`${access}${desc}`;
         }).join("\n");
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🧠 **Memory nodes** (${(nodes || []).length})\n\n${rows || "(none)"}\n\nFrom Jarvis SQLite knowledge graph at \`~\\.local\\share\\jarvis\\jarvis.db\`. Sorted by access_count then last_accessed.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot list memory keys: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2643,11 +2643,11 @@ Live research pipelines (in repo, runnable):
       try {
         const raw = await invoke<string>("xova_read_codex", {});
         const trimmed = raw.length > 6000 ? raw.slice(0, 6000) + "\n\n[…truncated]" : raw;
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `📜 **Xova codex / identity**\n\n${trimmed}`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot read codex: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2664,21 +2664,21 @@ Live research pipelines (in repo, runnable):
             const mark = t.status === "completed" ? "✓" : t.status === "in_progress" ? "▶" : "○";
             return `  ${mark} #${t.id} ${t.subject}`;
           }).join("\n");
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `📋 **Forge tasks** (${tasks.length} total)\n\n${rows}\n\n*This snapshot is written by Forge to ${tasksFile}. May be stale — Forge updates it when tasks change state.*`,
           }]);
           return;
         }
       } catch {}
       // Fall back: no snapshot file exists yet
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `📋 No Forge task snapshot at \`${tasksFile}\` yet. Forge writes this when its task tracker changes — ask Forge to write a snapshot if you want one now.`,
       }]);
       return;
     }
     // /rules — show the active behavioral rules
     if (slash === "/rules" || slash === "/laws") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text:
 `📜 **Active rules** (hardened across this session, persisted to Forge memory)
 
@@ -2768,9 +2768,9 @@ Source: \`D:\\\\.claude\\\\projects\\\\C--Users-adz-7\\\\memory\\\\feedback_*.md
   · Compression-safe continuity: ${sys.rules?.compression_safe_continuity ?? false}
 
 Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` for individual deep-dives.`;
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `dashboard error: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2799,11 +2799,11 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
             rows.push(`${ts}  ${d.crest || "?"}  agents:${agents.toString().padStart(2)} coh:${coh.toFixed(3)} gated:${gated}  ${goal}`);
           } catch {}
         }
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🔁 **Recent cognitive cycles** (last ${files.length} of ${(entries || []).filter(n => n.endsWith(".json")).length} total)\n\n\`\`\`\n${rows.join("\n")}\n\`\`\``,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot list cycles: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2823,11 +2823,11 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
           driveSnaps = (drv || []).filter(name => /^\d{8}_\d{6}$/.test(name)).length;
         } catch {}
         const rows = snaps.slice(0, 20).map(name => `  · ${name}`).join("\n");
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `📸 **Memory vault** — append-only, NTFS-deny-delete sealed, git-history committed\n\nLocal C:\\memory-vault: **${snaps.length} snapshots**\nDrive G:\\My Drive: **${driveSnaps} mirrors**\n\nRecent (last 20 newest first):\n${rows}\n\nManually trigger another: \`/vault-snap\`. Sources captured per snapshot: xova-memory + forge-memory + jarvis-src + xova-app-src + xova-tauri.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot list vault: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2845,11 +2845,11 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
           const tag = ext === "py" ? "🐍" : ext === "sh" ? "🐚" : ext === "svg" ? "🎨" : ext === "wav" ? "🔊" : "·";
           return `${tag} \`${name}\``;
         }).join("\n");
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🔌 **C:\\Xova\\plugins\\** — ${items.length} items\n\n${rows}\n\nRun a plugin: \`/plugin <name>\`. Or open the Plugins panel via Control Panel → plugins tab.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot list plugins: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2858,18 +2858,18 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
     if (slash.startsWith("/plugin ")) {
       const name = text.trim().split(/\s+/, 2)[1];
       if (!name) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "usage: `/plugin <filename>` — runs the plugin via the existing run_plugin Tauri command.",
         }]);
         return;
       }
       try {
         const result = await invoke<string>("run_plugin", { name });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🔌 **plugin: ${name}** — ran via run_plugin\n\n\`\`\`\n${result.slice(0, 3000)}\n\`\`\``,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `plugin ${name} failed: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2878,7 +2878,7 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
     // /panel — open the Control Panel (where the Plugins tab lives)
     if (slash === "/panel" || slash === "/control" || slash === "/control-panel") {
       setPanelOpen(true);
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🎛 Control Panel opened. Tabs: status · log · terminal · plugins · activity. Plugins tab lists C:\\Xova\\plugins\\ and runs them via run_plugin (deterministic, no LLM in the loop).`,
       }]);
       return;
@@ -2887,11 +2887,11 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
     if (slash === "/repos" || slash === "/repo-status") {
       try {
         const result = await invoke<string>("xova_list_repos", {});
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `📦 **wizardaax repos** (via xova_list_repos)\n\n\`\`\`\n${result.slice(0, 3500)}\n\`\`\``,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot list repos: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2935,7 +2935,7 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
           : dbAlive
             ? "  (no pythonw processes seen; Jarvis SQLite WAL recently active — somehow alive without visible processes)"
             : "  (no Jarvis pythonw processes found and SQLite WAL stale — daemon DOWN)";
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text:
 `🎙 **Jarvis status** — ${verdict}
 
@@ -2949,7 +2949,7 @@ Bridge files:
 If bridge stale > 10min while daemon up: listener may have stalled — try a fresh ping (write to jarvis_inbox.json with current ts) before assuming a restart is needed. Voice path through mic still works regardless.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot probe Jarvis: ${String(e).slice(0, 300)}`,
         }]);
       }
@@ -2966,13 +2966,13 @@ If bridge stale > 10min while daemon up: listener may have stalled — try a fre
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         const out = (wrap.stdout || wrap.stderr).trim();
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: wrap.exit === 0
             ? `📸 **Vault snapshot** (manual trigger)\n\n\`\`\`\n${out.slice(0, 800)}\n\`\`\`\n\nLocation: \`C:\\memory-vault\\<timestamp>\\\` + Drive mirror at \`G:\\My Drive\\memory-vault\\<timestamp>\\\`. Each snapshot is a full point-in-time copy of Xova memory + Forge memory + Jarvis source + Xova app source. Append-only, NTFS-deny-delete sealed, git-history committed.`
             : `snapshot failed (exit ${wrap.exit}):\n\`\`\`\n${out}\n\`\`\``,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot snapshot: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -2985,7 +2985,7 @@ If bridge stale > 10min while daemon up: listener may have stalled — try a fre
       const eye = svg ? svg.querySelector("circle") : null;
       const rect = svg ? (svg as SVGElement).getBoundingClientRect() : null;
       const visible = !!(rect && rect.width > 50 && rect.height > 50);
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text:
 `🦢 **SwanBackdrop DOM verification**
 
@@ -3030,9 +3030,9 @@ ${(info.models_local?.ollama ?? []).map((m: string) => `  · ${m}`).join("\n")}
 ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
 
 *Generated ${info.generated_at}*`;
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text }]);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `system_info.json not readable: ${String(e).slice(0, 200)}\n\nGenerate it: \`python D:\\temp\\refresh_sysinfo.py\``,
         }]);
       }
@@ -3046,11 +3046,11 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
           command: `cmd /c start "Xova LAN Gateway" /min python "D:\\temp\\xova_lan_gateway.py"`,
           cwd: null, elevated: false,
         });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🌐 **LAN gateway starting** on port 11435.\n\nFrom your S26 (or any device on the same WiFi), open a browser to your PC's LAN IP — run \`/sysinfo\` to find it. Page has buttons to send to Xova, hit Ollama directly with model picker, browse findings, view trash.\n\nStop: \`/lan-off\` (kills the gateway process).`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot start LAN gateway: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -3062,11 +3062,11 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
           command: `powershell -NoProfile -Command "Get-WmiObject Win32_Process | Where-Object { $_.CommandLine -like '*xova_lan_gateway*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"`,
           cwd: null, elevated: false,
         });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🌐 LAN gateway stopped.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot stop LAN gateway: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -3121,14 +3121,14 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       const out = rows.map(([label, detail]) =>
         detail === null ? label : `${label}${detail ? `  →  ${detail}` : ""}`
       ).join("\n");
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🔒 **Sovereignty audit** (2026-05-02)\n\n${out}\n\n*Adam's 100-year design contract: stdlib only, no SaaS, no APIs that can disappear. The cognitive core runs offline. External services are explicit, optional, and degrade to errors when unreachable.*`,
       }]);
       return;
     }
     // /verify — deterministic real-output proof for every subsystem
     if (slash === "/verify" || slash === "/real" || slash === "/no-fake") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🔍 Running deterministic verification — every subsystem produces real output with cryptographic proof …`,
       }]);
       try {
@@ -3164,7 +3164,7 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
           checks.push(["Trash bins", `xova=${d.xova?.entries||0}, jarvis=${d.jarvis?.entries||0}, forge=${d.forge?.entries||0} entries`]);
         }
         const ts_ms = Date.now();
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: ts_ms,
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: ts_ms,
           text:
 `🔍 **Deterministic verification — ${ts_ms}** (each subsystem produced real output)
 
@@ -3173,7 +3173,7 @@ ${checks.map(([k,v]) => `**${k}**\n  ${v}`).join("\n\n")}
 Every value above came from a fresh subprocess invocation right now. No mocks, no LLM, no fake. Run \`/verify\` again any time — outputs are deterministic so you can compare.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `verification error: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -3181,7 +3181,7 @@ Every value above came from a fresh subprocess invocation right now. No mocks, n
     }
     // /evolve — fire one EvolutionEngine pipeline pass (observe→propose→simulate→apply)
     if (slash === "/evolve" || slash === "/evolution" || slash === "/self-improve") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🧬 Running EvolutionEngine — recursive self-evolution pipeline …`,
       }]);
       try {
@@ -3191,7 +3191,7 @@ Every value above came from a fresh subprocess invocation right now. No mocks, n
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         if (wrap.exit !== 0) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `❌ EvolutionEngine failed (exit ${wrap.exit})\n\n${(wrap.stderr || wrap.stdout).slice(0, 1500)}`,
           }]);
           return;
@@ -3209,7 +3209,7 @@ Every value above came from a fresh subprocess invocation right now. No mocks, n
         const obs = data.observed;
         const props = data.proposals.map((p, i) => `${i+1}. ${p.title || "(untitled)"} · risk=${p.risk || "?"}${p.human_gate ? " 🚧 human-gate" : ""}`).join("\n  ");
         const applied = data.applied_items.map((a) => `${a.title || "(untitled)"} → ${a.version}`).join("\n  ");
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text:
 `🧬 **EvolutionEngine — recursive self-evolution pass complete**
 
@@ -3227,7 +3227,7 @@ Every value above came from a fresh subprocess invocation right now. No mocks, n
 Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engine.py\` · 81 tests pass · structural changes carry human_gate=true.`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot run EvolutionEngine: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -3252,7 +3252,7 @@ Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engin
             src_path: string; size: number; name: string;
           }>;
           if (items.length === 0) {
-            setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+            setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
               text: `🗑 Trash — no matches${q ? ` for "${q}"` : ""}.\n\nThe agent recycle bins (Xova / Jarvis / Forge) are append-only. Files are deposited via \`trash_keeper.deposit()\` whenever a delete-prone operation runs. Nothing has been deposited yet${q ? ` matching "${q}"` : ""}.`,
             }]);
             return;
@@ -3260,16 +3260,16 @@ Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engin
           const rows = items.map((e, i) =>
             `${i+1}. **${e.name}** [${e.agent}/${e.actor || "?"}] ${e.ts}\n   id: \`${e.id}\` · ${(e.size/1024).toFixed(1)}k · from \`${e.src_path}\`${e.reason ? `\n   reason: _${e.reason}_` : ""}`
           ).join("\n\n");
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `🗑 **Trash — ${q ? `${data.matches || items.length} matches for "${q}"` : `${items.length} most recent across all agents`}**\n\n${rows}\n\n*Restore an entry: \`/trash-restore <id> <target-path>\`*`,
           }]);
         } catch {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `🗑 Trash output:\n\n\`\`\`\n${out.slice(0, 3000)}\n\`\`\``,
           }]);
         }
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot query trash: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -3278,7 +3278,7 @@ Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engin
     if (slash.startsWith("/trash-restore ")) {
       const parts = text.trim().split(/\s+/);
       if (parts.length < 3) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "usage: `/trash-restore <id> <target-path>` — copies the entry back, original deposit stays in trash forever.",
         }]);
         return;
@@ -3291,13 +3291,13 @@ Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engin
         const raw = await invoke<string>("xova_run", { command: cmd, cwd: null, elevated: false });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         const out = wrap.stdout || wrap.stderr;
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: wrap.exit === 0
             ? `✓ restored \`${id}\` → \`${target}\`\n\nOriginal deposit kept in trash.`
             : `restore failed:\n\`\`\`\n${out.slice(0, 1500)}\n\`\`\``,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot restore: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -3309,14 +3309,14 @@ Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engin
       setViewportMode(mode);
       try { await invoke("save_memory", { key: "viewport_mode", value: mode }); } catch {}
       const px = mode === "phone" ? 375 : mode === "tablet" ? 768 : 0;
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `📱 viewport → **${mode}**${px ? ` (${px}px wide)` : ""}.${mode === "desktop" ? "" : " Click /desktop to return."}`,
       }]);
       return;
     }
     // /aeon — run the AEON Engine v2.1 thrust simulation in-app
     if (slash === "/aeon" || slash === "/aeon-engine") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🚀 Running AEON Engine v2.1 — Faraday-induction gravity-flyer …`,
       }]);
       try {
@@ -3326,7 +3326,7 @@ Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engin
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         if (wrap.exit !== 0) {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `❌ AEON Engine failed (exit ${wrap.exit})\n\n${(wrap.stderr || wrap.stdout).slice(0, 1500)}`,
           }]);
           return;
@@ -3339,7 +3339,7 @@ Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engin
           const v = data.validation || {};
           const ts = (data.thrust_series || []).slice(0, 5);
           const series = ts.map((s: any) => `t=${s.t.toExponential(2)}s  dΦ/dt=${s.dphi_dt}V  thrust=${s.thrust.toExponential(3)}N`).join("\n  ");
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text:
 `🚀 **AEON Engine v2.1** — Faraday-induction propulsion physics
 
@@ -3359,12 +3359,12 @@ Source: D:\\github\\wizardaax\\ziltrix-sch-core\\aeon_engine.py
 Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           }]);
         } catch {
-          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
             text: `🚀 AEON Engine output:\n\n${out.slice(0, 4000)}`,
           }]);
         }
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot run AEON Engine: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -3372,7 +3372,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
     }
     // /riemann — run the Riemann · φ clustering test in-app
     if (slash === "/riemann" || slash === "/riemann-phi") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🌀 Running Riemann · φ clustering test (3 projections, 1000-shuffle null) …`,
       }]);
       try {
@@ -3382,11 +3382,11 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         const out = (wrap.stdout || wrap.stderr).trim();
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🌀 **Riemann · φ clustering** (exit ${wrap.exit})\n\n\`\`\`\n${out.slice(0, 4500)}\n\`\`\`\n\nPaper: https://wizardaax.github.io/findings/riemann_phi_clustering_2026_05.html`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot run Riemann test: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -3394,7 +3394,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
     }
     // /bayesian — run the Bayesian formalisation of cross-domain consistency
     if (slash === "/bayesian" || slash === "/bayes") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `📊 Running Bayesian formalisation (50,000 Monte Carlo samples) …`,
       }]);
       try {
@@ -3404,11 +3404,11 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         const out = (wrap.stdout || wrap.stderr).trim();
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `📊 **Bayesian formalisation — cross-domain consistency** (exit ${wrap.exit})\n\n\`\`\`\n${out.slice(0, 5000)}\n\`\`\``,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `cannot run Bayesian test: ${String(e).slice(0, 200)}`,
         }]);
       }
@@ -3417,7 +3417,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
     if (slash === "/phase") {
       const v = xovaPhase.recentVolatility(8);
       const recent = xovaPhase.deltaValues.slice(-12);
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🌀 GlyphPhaseEngine state (Adam's substrate library running on the surface):\n\n` +
               `Phase: **${xovaPhase.currentPhase}**\n` +
               `Recent deltas (last ${recent.length}): ${recent.map((d) => d.toFixed(2)).join(", ") || "none yet"}\n` +
@@ -3431,11 +3431,11 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       try {
         const notes = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\forge_notes.md" });
         const trimmed = notes.length > 6000 ? notes.slice(-6000) + "\n\n[…earlier entries truncated]" : notes;
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: trimmed || "(forge_notes.md is empty — Forge hasn't written anything yet)",
         }]);
       } catch {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "No forge notes yet. The journal lives at C:\\Xova\\memory\\forge_notes.md and the Code Forger writes to it across sessions.",
         }]);
       }
@@ -3445,14 +3445,14 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       try {
         const log = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\forge_events.jsonl" });
         const lines = log.trim().split("\n").slice(-30);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `🛠 forge events (last ${lines.length}):\n\n` + lines.map((l) => {
             try { const e = JSON.parse(l); return `[${new Date(e.ts).toLocaleTimeString()}] ${e.kind}: ${e.note ?? ""}`; }
             catch { return l; }
           }).join("\n"),
         }]);
       } catch {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "No event log yet — runtime events get appended once they fire.",
         }]);
       }
@@ -3461,7 +3461,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
     if (slash === "/eval" || slash === "/evals") {
       const evals = messages.filter((m) => m.role === "xova" && m.selfEval).slice(-12);
       if (evals.length === 0) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: "No self-evaluations yet — they fire automatically after each reply.",
         }]);
         return;
@@ -3476,7 +3476,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       }).join("\n");
       const avg = evals.reduce((s, m) => s + m.selfEval!.hallucinationRisk, 0) / evals.length;
       const answered = evals.filter((m) => m.selfEval!.answered).length;
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🧪 Self-evaluations (last ${evals.length})\nAvg hallucination risk: ${avg.toFixed(1)}/5  ·  Answered: ${answered}/${evals.length}\n\n${lines}`,
       }]);
       return;
@@ -3486,7 +3486,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       const mins = Math.round((Date.now() - startTs) / 60000);
       const hrs = Math.floor(mins / 60);
       const remMins = mins % 60;
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `Xova running for ${hrs > 0 ? `${hrs}h ` : ""}${remMins}m`,
       }]);
       return;
@@ -3495,18 +3495,18 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       try {
         const status = await invoke<string>("xova_status");
         const parsed = JSON.parse(status);
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `you are: Adam Snellman\n${JSON.stringify(parsed, null, 2)}`,
         }]);
       } catch (e) {
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: `you are: Adam Snellman (status unavailable: ${e instanceof Error ? e.message : String(e)})`,
         }]);
       }
       return;
     }
     if (slash === "/help" || slash === "/?") {
-      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text:
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text:
         "slash commands:\n" +
         "  /clear       — clear chat\n" +
         "  /cam         — toggle camera tile\n" +
@@ -3611,7 +3611,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
         "- For new tools: xova_build_tool.",
       ].join("\n");
       setMessages((prev) => [...prev, {
-        id: `dbg-${Date.now()}`, role: "xova", ts: Date.now(),
+        id: `dbg-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `LIVE SYSTEM PROMPT (${systemContent.length} chars):\n\n${systemContent}`,
       }]);
       return;
@@ -3636,7 +3636,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       const numMatch = text.match(/\b(\d+)\b/);
       const args = numMatch ? { n: parseInt(numMatch[1], 10) } : {};
       const reply: ChatMessage = {
-        id: `x-${Date.now()}`, role: "xova", ts: Date.now(),
+        id: `x-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `Dispatching ${matched}${numMatch ? ` with n=${numMatch[1]}` : ""}.`,
       };
       setMessages((prev) => [...prev, reply]);
@@ -3817,7 +3817,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
                   const corrected = stripImpersonation(correction.text);
                   if (!corrected || corrected === sanitized) return;
                   setMessages((prev) => [...prev, {
-                    id: `correction-${Date.now()}`, role: "xova", ts: Date.now(),
+                    id: `correction-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
                     text: `🔁 *corrected:*  ${corrected}`,
                   }]);
                   pushActivityRef.current?.(`auto-correction fired (risk ${ev.hallucinationRisk}/5)`);
@@ -3908,7 +3908,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
                 }
                 if (screenshotOk) {
                   setMessages((prev) => [...prev, {
-                    id: `img-${Date.now()}`,
+                    id: `img-${Date.now()}-${Math.random().toString(36).slice(2,5)}`,
                     role: "xova",
                     ts: Date.now(),
                     text: "screenshot:",

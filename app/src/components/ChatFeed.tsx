@@ -284,7 +284,11 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
           {recent.length === 0 ? (
             <div className="italic">awaiting activity...</div>
           ) : recent.map((line, i) => (
-            <div key={i} className="truncate" title={line}>{line}</div>
+            // Use the line content + position as the key. Each pushActivity
+            // line is timestamped at the start ("[HH:MM:SS] ..."), so within
+            // a sliding window of 200 entries collisions are vanishingly rare.
+            // The trailing -i disambiguates the rare same-second-same-text case.
+            <div key={`${line}-${i}`} className="truncate" title={line}>{line}</div>
           ))}
         </div>
       </div>
