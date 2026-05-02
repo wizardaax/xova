@@ -164,6 +164,31 @@ function stripImpersonation(text: string): string {
   return text.trim();
 }
 
+/**
+ * Compress a Jarvis-bound prompt to ≤12 words so it hits Jarvis's xova_inbox
+ * fast path. The full pipeline (memory enrichment + tool router + multi-turn)
+ * has been observed to silently swallow long messages on the running daemon
+ * (likely the small-model planner-paraphrasing + diary-failure-poisoning
+ * issues fixed upstream by isair/jarvis PRs #290 + #259 — Adam's bridge fork
+ * doesn't have those yet). Fast path is ~2-5s and reliable; full pipeline is
+ * indefinitely hung. Until the daemon picks up the upstream fixes (next clean
+ * start), constrain every Xova→Jarvis send to fast-path length.
+ *
+ * Also strips known full-pipeline tool-keywords (weather/time/date/...) when
+ * they appear in casual prompts — those route to full pipeline regardless of
+ * word count. If a real butler task IS needed (genuine weather/reminder), the
+ * caller passes shouldUseFullPipeline=true and the message is sent untouched.
+ */
+function compressForJarvisFastPath(text: string, shouldUseFullPipeline = false): string {
+  if (shouldUseFullPipeline) return text;
+  const trimmed = text.replace(/\s+/g, " ").trim();
+  const words = trimmed.split(" ").filter(Boolean);
+  if (words.length <= 12) return trimmed;
+  // Keep the first 12 words; if the last kept word is a connector, drop it for cleanliness.
+  const kept = words.slice(0, 12).join(" ").replace(/[,;.\s]+$/, "");
+  return kept;
+}
+
 /** Mirror of stripImpersonation, but for Jarvis replies — cuts fake "Xova:" blocks. */
 function stripJarvisImpersonation(text: string): string {
   const xovaLineMatch = text.match(/(?:^|\n)\s*(?:🎙\s*)?Xova\s*:/i);
@@ -640,6 +665,7 @@ function App() {
   const lastVoiceTs = useRef<number>(0);
   const lastUserVoiceTs = useRef<number>(0);
   const lastCommandTs = useRef<number>(Date.now());
+  const lastSlashTs = useRef<number>(Date.now());
   // Cursor for jarvis→xova chat bridge. Jarvis writes a question to
   // xova_chat_inbox.json; we surface it as a "🤖 jarvis asks" user message,
   // run it through Xova's LLM, and surface the reply.
@@ -822,6 +848,24 @@ function App() {
           }
         }
       } catch { /* file missing — fine */ }
+
+      // Slash bridge: Forge / Jarvis / phone can write {text, ts} to
+      // C:\Xova\memory\xova_slash_inbox.json. The text is fed straight to
+      // onSend(), routing through the same dispatch pipeline a typed input
+      // hits — slash handlers fire, palette presets work, Ollama chat path
+      // works. Lets external agents trigger /aeon, /findings, /sysinfo, etc.
+      try {
+        const raw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\xova_slash_inbox.json" });
+        const parsed = JSON.parse(raw) as { text?: string; from?: string; ts?: number };
+        if (parsed && typeof parsed.ts === "number" && parsed.ts > lastSlashTs.current && typeof parsed.text === "string") {
+          lastSlashTs.current = parsed.ts;
+          if (!cancelled) {
+            pushActivity(`${parsed.from ?? "external"} → /${parsed.text.replace(/^\//, "")}`);
+            // Defer to give state cursor write a chance to settle, then dispatch
+            setTimeout(() => onSend(parsed.text!), 50);
+          }
+        }
+      } catch { /* file missing — fine */ }
     };
     const handle = window.setInterval(tick, 2000);
     void tick();
@@ -891,8 +935,9 @@ function App() {
     ) && jarvisAlias.test(trimmedLower);
     if (addressedToJarvis) {
       try {
-        await invoke("xova_ask_jarvis", { text });
-        pushActivity(`→ jarvis: ${text.slice(0, 80)}`);
+        const fastText = compressForJarvisFastPath(text);
+        await invoke("xova_ask_jarvis", { text: fastText });
+        pushActivity(`→ jarvis: ${fastText.slice(0, 80)}${fastText !== text ? " [compressed for fast-path]" : ""}`);
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         setMessages((prev) => [...prev, {
@@ -979,13 +1024,19 @@ function App() {
         setMessages((prev) => [...prev, { id: `banter-x-${Date.now()}`, role: "xova", ts: Date.now(), text: xt1 }]);
 
         // R2: Xova asks Jarvis. Use the real bridge.
-        const xQuestion = `Jarvis, here's my take. ${xt1.slice(0, 200)} What do you think — agree?`;
+        // CRITICAL: keep the question SHORT (≤12 words, no tool keywords like
+        // weather/time/find/search/etc) so Jarvis's listener uses the fast path
+        // (one direct chat call, ~2-5s) instead of the full pipeline (memory
+        // enrichment + tool router + multi-turn loop, which currently hangs on
+        // longer messages and never replies). Jarvis already has the topic from
+        // the daemon's persona; he doesn't need Xova's full R1 reasoning replayed.
+        const xQuestion = `Jarvis, your take on ${topic.slice(0, 40)}?`;
         await invoke("xova_ask_jarvis", { text: xQuestion });
         // Jarvis's reply will land via voice_inbox poller naturally.
-        pushActivity("banter R2: sent Xova's question to Jarvis via real bridge");
+        pushActivity(`banter R2: short question sent to Jarvis (${xQuestion.length}c, fast-path)`);
 
-        // R3 closer: wait briefly for Jarvis reply to land, then Xova wraps up.
-        await new Promise((r) => setTimeout(r, 8000));
+        // R3 closer: wait long enough for fast-path reply (typical 2-5s, allow margin).
+        await new Promise((r) => setTimeout(r, 12000));
         const r3 = await ollamaChat([
           { role: "system", content: "You are Xova wrapping up a brief team conversation with Jarvis about " + topic + ". One short sentence in your own voice. No 'Jarvis:' line." },
           { role: "user", content: "Close the conversation warmly." },
@@ -2212,15 +2263,15 @@ Live research pipelines (in repo, runnable):
       // Mirror what's on wizardaax.github.io/findings — local app surface.
       try {
         const fdir = "D:\\github\\wizardaax\\wizardaax.github.io\\findings";
-        const listing = await invoke<Array<{ name: string; size: number; is_dir: boolean }>>("xova_list_dir", { path: fdir });
+        // xova_list_dir returns Vec<String> — bare filenames (no size, no is_dir).
+        const listing = await invoke<string[]>("xova_list_dir", { path: fdir });
         const files = (listing || [])
-          .filter((e) => !e.is_dir && /\.(md|html|py)$/.test(e.name))
-          .sort((a, b) => a.name.localeCompare(b.name));
-        const fmt = (s: number) => s < 1024 ? `${s}b` : `${(s/1024).toFixed(1)}k`;
-        const rows = files.map((f) => {
-          const ext = f.name.split(".").pop();
+          .filter((name) => /\.(md|html|py)$/.test(name))
+          .sort((a, b) => a.localeCompare(b));
+        const rows = files.map((name) => {
+          const ext = name.split(".").pop();
           const tag = ext === "md" ? "📄" : ext === "html" ? "🌐" : ext === "py" ? "🐍" : "·";
-          return `${tag} \`${f.name}\` — ${fmt(f.size)}`;
+          return `${tag} \`${name}\``;
         }).join("\n");
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
           text: `📜 **Findings** (mirrors wizardaax.github.io/findings)\n\n${rows}\n\n` +
@@ -2309,15 +2360,254 @@ Live research pipelines (in repo, runnable):
       }
       return;
     }
-    // /memory-list — list saved memory keys (xova_memory_list)
+    // /agent <goal> — autonomous computer-use REPL.
+    // Runs D:\temp\agent_loop.py with the user's goal. Each step the local
+    // llama3.2:3b decides one tool call (shell / screen / click / type /
+    // press / read / write / windows / focus / done / say) via real
+    // primitives. Persistent shell session at C:\Xova\memory\xova_shell\
+    // preserves cwd across steps. Closes the "AGI can't open its own
+    // terminal" gap Adam flagged.
+    if (slash.startsWith("/agent ") || slash === "/agent") {
+      const goal = text.replace(/^\/agent\s*/i, "").trim();
+      if (!goal) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: "usage: `/agent <goal>` — e.g. `/agent list every python file in D:\\temp and report the count`",
+        }]);
+        return;
+      }
+      setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+        text: `🤖 **Agent loop starting** — goal: \`${goal}\`\n_running up to 8 steps; each step picks a tool autonomously_`,
+      }]);
+      try {
+        // cmd.exe quoting through xova_run is unreliable for goals containing
+        // special chars. Drop the goal into a temp file first; agent_loop.py
+        // reads it via --goal-file.
+        const goalPath = `C:\\Xova\\memory\\agent_goal_${Date.now()}.txt`;
+        await invoke("xova_write_file", { path: goalPath, content: goal });
+        // Path has no spaces — drop the wrapping quotes; cmd /C wrapping
+        // mangles them and the script then receives no path at all.
+        const raw = await invoke<string>("xova_run", {
+          command: `python D:\\temp\\agent_loop.py --goal-file ${goalPath} --max-steps 8`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const out = wrap.stdout.trim();
+        let body = out.slice(0, 2500);
+        try {
+          const d = JSON.parse(out);
+          const stepLines = (d.steps || []).map((s: any, i: number) => {
+            if (s.no_tool) return `  ${i+1}. ⊘ no tool call · model said: ${(s.model_text || "").slice(0, 100)}`;
+            const ok = s.result?.ok ? "✓" : "✗";
+            const r = s.result?.result || s.result?.error || "";
+            const rs = typeof r === "string" ? r : JSON.stringify(r);
+            const args = JSON.stringify(s.args || {}).slice(0, 80);
+            return `  ${i+1}. ${ok} \`${s.tool}\` ${args}\n     → ${rs.slice(0, 200).replace(/\n/g, " / ")}`;
+          }).join("\n");
+          body = `**Done:** ${d.done}  ·  **Steps:** ${(d.steps || []).length}\n${d.summary ? `**Summary:** ${d.summary}\n` : ""}\n${stepLines}`;
+        } catch {}
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `🤖 **Agent run complete** ${wrap.exit === 0 ? "✓" : "✗"}\n\n${body}`,
+        }]);
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `agent failed: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
+    // /shell <command> — pipe a single command through the persistent xova_shell session.
+    // cwd survives between calls; multi-step terminal work behaves like one tmux pane.
+    if (slash.startsWith("/shell ") || slash === "/shell") {
+      const cmd = text.replace(/^\/shell\s*/i, "").trim();
+      if (!cmd) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: "usage: `/shell <command>` — e.g. `/shell git status` or `/shell cd D:\\github\\wizardaax`",
+        }]);
+        return;
+      }
+      try {
+        // Same file-based quoting bypass as /agent.
+        const cmdPath = `C:\\Xova\\memory\\shell_cmd_${Date.now()}.txt`;
+        await invoke("xova_write_file", { path: cmdPath, content: cmd });
+        // Drop quotes (path has no spaces) — cmd /C wrapping eats them.
+        const raw = await invoke<string>("xova_run", {
+          command: `python D:\\temp\\xova_shell.py exec --cmd-file ${cmdPath}`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const out = wrap.stdout.trim();
+        try {
+          const d = JSON.parse(out);
+          const fence = "```\n" + (d.stdout || "(no stdout)") + (d.stderr ? "\n--- stderr ---\n" + d.stderr : "") + "\n```";
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+            text: `⌨ \`${cmd}\` (cwd: \`${d.cwd_after}\`, exit ${d.exit})\n${fence}`,
+          }]);
+        } catch {
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+            text: `shell raw:\n\`\`\`\n${out.slice(0, 2000)}\n\`\`\``,
+          }]);
+        }
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `shell failed: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
+    // /calibration — confidence-calibration loop output (Round 108).
+    // Reads forge_events.jsonl, computes self-eval risk distribution + flag rate,
+    // suggests whether to raise/lower the auto-correction threshold.
+    if (slash === "/calibration" || slash === "/calib") {
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python D:\\temp\\confidence_calibration.py`, cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const out = wrap.stdout.trim();
+        let body = out.slice(0, 1500);
+        try {
+          const d = JSON.parse(out);
+          const dist = d.risk_distribution || {};
+          const distLine = [1,2,3,4,5].map(i => `${i}:${dist[i]||0}`).join("  ");
+          body = `**Window:** ${d.window_events} events  ·  **Flagged:** ${d.flagged}  ·  **Auto-corrected:** ${d.auto_corrected}\n` +
+                 `**Risk distribution:** ${distLine}\n` +
+                 `**Answered rate:** ${d.answered_rate !== null ? (d.answered_rate*100).toFixed(0)+'%' : 'n/a'}\n\n` +
+                 `**Current threshold:** ${d.calibration.current_threshold}/5\n` +
+                 `**Flag rate:** ${(d.calibration.flag_rate*100).toFixed(1)}%\n` +
+                 `**Suggested threshold:** ${d.calibration.suggested_threshold}/5\n` +
+                 `_${d.calibration.reasoning}_`;
+        } catch {}
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `🎯 **Confidence calibration** ${wrap.exit === 0 ? "✓" : "✗"}\n\n${body}\n\nLog appended to \`C:\\Xova\\memory\\calibration.jsonl\`.`,
+        }]);
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `cannot run calibration: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
+    // /swarm — fire SwarmOrchestrator status probe + tiny execute() round-trip.
+    // Surfaces the 4-shard CoherenceGovernor-managed swarm subsystem in chat.
+    if (slash === "/swarm" || slash === "/shards") {
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python D:\\temp\\run_swarm.py`, cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const out = wrap.stdout.trim();
+        let body = out.slice(0, 1500);
+        try {
+          const d = JSON.parse(out);
+          const shardLines = (d.shards || []).map((s: any) =>
+            `  · shard ${s.shard_id} · workers=${s.workers} · coh=${s.coherence} · isolated=${s.isolated} · tasks=${s.tasks_completed}`
+          ).join("\n");
+          body = `**Started:** ${d.started}  ·  **Shards:** ${d.shard_count}  ·  **Governor:** ${d.governor}\n\n` +
+                 shardLines + `\n\n**Status:** ${d.status_method}\n` +
+                 `**Probe execute() round-trip:** ${d.execute_probe.ok ? "✓" : "✗"} → \`${d.execute_probe.result}\``;
+        } catch {}
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `🐝 **Swarm** — CellShard fleet + CoherenceGovernor (${wrap.exit === 0 ? "✓" : "✗"})\n\n${body}`,
+        }]);
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `cannot probe swarm: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
+    // /sync-facts — pull Jarvis SQLite memory_nodes into xova_standing_facts.json.
+    // Cross-AI memory federation: Jarvis's User/World/Directives nodes get
+    // line-deduped (PR #282 normaliser) and written to a unified file that
+    // Xova + Forge both consume. Runs the helper at D:\temp\sync_standing_facts.py.
+    if (slash === "/sync-facts" || slash === "/sync-memory") {
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python D:\\temp\\sync_standing_facts.py`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const out = wrap.stdout || wrap.stderr;
+        let summary = out.slice(0, 1500);
+        try {
+          const j = JSON.parse(out);
+          summary = `out: \`${j.out_path}\`\nsynced: ${j.synced_at}\n\n` +
+                    `**Totals:** User=${j.totals.user_facts}  World=${j.totals.world_facts}  Directives=${j.totals.directives}\n` +
+                    `**Deduped (this pass):** User=${j.dedup_savings.User}  World=${j.dedup_savings.World}  Directives=${j.dedup_savings.Directives}\n` +
+                    `**Jarvis access counts:** User=${j.access_counts.User}  World=${j.access_counts.World}  Directives=${j.access_counts.Directives}`;
+        } catch {}
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `🧠↔🎙 **Cross-AI memory sync** ${wrap.exit === 0 ? "✓" : "✗"}\n\n${summary}`,
+        }]);
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `cannot sync facts: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
+    // /standing-facts — show what's in xova_standing_facts.json (the unified facts pool).
+    if (slash === "/standing-facts" || slash === "/facts" || slash === "/known") {
+      try {
+        const raw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\xova_standing_facts.json" });
+        const d = JSON.parse(raw);
+        const fmt = (label: string, arr: string[], limit = 12) => {
+          const head = arr.slice(0, limit).map(s => `  · ${s.slice(0, 130)}`).join("\n");
+          const more = arr.length > limit ? `\n  … ${arr.length - limit} more` : "";
+          return `**${label}** (${arr.length})\n${head}${more}`;
+        };
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `🧠 **Standing facts** — synced ${d.synced_at}\n\n` +
+                fmt("User facts", d.user_facts || []) + "\n\n" +
+                fmt("World facts", d.world_facts || []) + "\n\n" +
+                fmt("Directives", d.directives || []) +
+                `\n\nRefresh with \`/sync-facts\`. Source: Jarvis SQLite at \`${d.source?.jarvis_db}\`.`,
+        }]);
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `no standing facts yet (run \`/sync-facts\` first): ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
+    // /agi-stack — display the canonical 5-system AGI architecture document inline.
+    // Adam wrote this on 2026-05-02 as the single source of truth (252 lines):
+    //   recursive-field-math-pro/docs/agi_stack_architecture.md
+    // ASCII stack diagram + 13-agent table + 5 subsystems + 720+ tests + "AEON is the goal".
+    if (slash === "/agi-stack" || slash === "/agi" || slash === "/architecture") {
+      const path = "D:\\github\\wizardaax\\recursive-field-math-pro\\docs\\agi_stack_architecture.md";
+      try {
+        const content = await invoke<string>("xova_read_file", { path });
+        // Doc is 252 lines / ~10kb — render inline; the chat handles markdown.
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `🧠 **AGI Stack Architecture** — single source of truth (\`${path}\`)\n\n${content}`,
+        }]);
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `cannot read AGI stack doc at ${path}: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
+    // /memory-list — list saved memory nodes from Jarvis SQLite (xova_memory_list)
+    // Returns JSON array of objects: {id, name, description, data, parent_id, access_count, last_accessed, ...}
     if (slash === "/memory-list" || slash === "/mem-list") {
       try {
         const raw = await invoke<string>("xova_memory_list", {});
-        let keys: string[] = [];
-        try { keys = JSON.parse(raw); if (!Array.isArray(keys)) keys = keys?.keys ?? []; } catch {}
-        const rows = (keys || []).map((k: string) => `  · \`${k}\``).join("\n");
+        let nodes: any[] = [];
+        try {
+          const parsed = JSON.parse(raw);
+          nodes = Array.isArray(parsed) ? parsed : (parsed?.keys ?? parsed?.nodes ?? []);
+        } catch {}
+        const rows = (nodes || []).map((n: any) => {
+          if (typeof n === "string") return `  · \`${n}\``;
+          const label = n?.name || n?.id || "(unnamed)";
+          const access = typeof n?.access_count === "number" ? ` · accessed ${n.access_count}×` : "";
+          const desc = n?.description ? ` — ${String(n.description).slice(0, 80)}` : "";
+          return `  · \`${label}\`${access}${desc}`;
+        }).join("\n");
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
-          text: `🧠 **Saved memory keys** (${(keys || []).length})\n\n${rows || "(none)"}\n\nEach key persists across restarts. Loaded on Xova hydrate; saved on every state change for tracked keys.`,
+          text: `🧠 **Memory nodes** (${(nodes || []).length})\n\n${rows || "(none)"}\n\nFrom Jarvis SQLite knowledge graph at \`~\\.local\\share\\jarvis\\jarvis.db\`. Sorted by access_count then last_accessed.`,
         }]);
       } catch (e) {
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
@@ -2396,17 +2686,17 @@ Source: \`D:\\\\.claude\\\\projects\\\\C--Users-adz-7\\\\memory\\\\feedback_*.md
         try {
           sys = JSON.parse(await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\system_info.json" }));
         } catch {}
-        // Count cycle logs
+        // Count cycle logs (xova_list_dir returns string[])
         let cycles = 0;
         try {
-          const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("xova_list_dir", { path: "C:\\Xova\\memory\\cycles" });
-          cycles = (entries || []).filter(e => !e.is_dir && e.name.endsWith(".json")).length;
+          const entries = await invoke<string[]>("xova_list_dir", { path: "C:\\Xova\\memory\\cycles" });
+          cycles = (entries || []).filter(name => name.endsWith(".json")).length;
         } catch {}
         // Count vault snapshots
         let vault = 0;
         try {
-          const entries = await invoke<Array<{ name: string; is_dir: boolean }>>("xova_list_dir", { path: "C:\\memory-vault" });
-          vault = (entries || []).filter(e => e.is_dir && /^\d{8}_\d{6}$/.test(e.name)).length;
+          const entries = await invoke<string[]>("xova_list_dir", { path: "C:\\memory-vault" });
+          vault = (entries || []).filter(name => /^\d{8}_\d{6}$/.test(name)).length;
         } catch {}
         // Bridge freshness
         let xovaBridgeAge = -1, jarvisBridgeAge = -1;
@@ -2468,15 +2758,16 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
     if (slash === "/cycles" || slash.startsWith("/cycles ")) {
       const n = parseInt(text.trim().split(/\s+/)[1] || "10", 10) || 10;
       try {
-        const entries = await invoke<Array<{ name: string; size: number; is_dir: boolean }>>("xova_list_dir", { path: "C:\\Xova\\memory\\cycles" });
+        // xova_list_dir returns string[] — filter by extension, no is_dir available.
+        const entries = await invoke<string[]>("xova_list_dir", { path: "C:\\Xova\\memory\\cycles" });
         const files = (entries || [])
-          .filter(e => !e.is_dir && e.name.endsWith(".json"))
-          .sort((a, b) => b.name.localeCompare(a.name))  // newest first
+          .filter(name => name.endsWith(".json"))
+          .sort((a, b) => b.localeCompare(a))  // newest first
           .slice(0, n);
         const rows: string[] = [];
-        for (const f of files) {
+        for (const fname of files) {
           try {
-            const raw = await invoke<string>("xova_read_file", { path: `C:\\Xova\\memory\\cycles\\${f.name}` });
+            const raw = await invoke<string>("xova_read_file", { path: `C:\\Xova\\memory\\cycles\\${fname}` });
             const d = JSON.parse(raw);
             const ts = (d.timestamp_iso || "").slice(11, 19);
             const goal = (d.goal || "").slice(0, 35);
@@ -2487,7 +2778,7 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
           } catch {}
         }
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
-          text: `🔁 **Recent cognitive cycles** (last ${n} of ${(entries || []).length} total)\n\n\`\`\`\n${rows.join("\n")}\n\`\`\``,
+          text: `🔁 **Recent cognitive cycles** (last ${files.length} of ${(entries || []).filter(n => n.endsWith(".json")).length} total)\n\n\`\`\`\n${rows.join("\n")}\n\`\`\``,
         }]);
       } catch (e) {
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
@@ -2499,16 +2790,17 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
     // /vault — list vault snapshot history
     if (slash === "/vault" || slash === "/snapshots") {
       try {
-        const entries = await invoke<Array<{ name: string; size: number; is_dir: boolean }>>("xova_list_dir", { path: "C:\\memory-vault" });
+        // xova_list_dir returns Vec<String> — bare filenames. Snapshot dirs are uniquely named YYYYMMDD_HHMMSS.
+        const entries = await invoke<string[]>("xova_list_dir", { path: "C:\\memory-vault" });
         const snaps = (entries || [])
-          .filter(e => e.is_dir && /^\d{8}_\d{6}$/.test(e.name))
-          .sort((a, b) => b.name.localeCompare(a.name));
+          .filter(name => /^\d{8}_\d{6}$/.test(name))
+          .sort((a, b) => b.localeCompare(a));
         let driveSnaps = 0;
         try {
-          const drv = await invoke<Array<{ name: string; is_dir: boolean }>>("xova_list_dir", { path: "G:\\My Drive\\memory-vault" });
-          driveSnaps = (drv || []).filter(e => e.is_dir && /^\d{8}_\d{6}$/.test(e.name)).length;
+          const drv = await invoke<string[]>("xova_list_dir", { path: "G:\\My Drive\\memory-vault" });
+          driveSnaps = (drv || []).filter(name => /^\d{8}_\d{6}$/.test(name)).length;
         } catch {}
-        const rows = snaps.slice(0, 20).map(s => `  · ${s.name}`).join("\n");
+        const rows = snaps.slice(0, 20).map(name => `  · ${name}`).join("\n");
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
           text: `📸 **Memory vault** — append-only, NTFS-deny-delete sealed, git-history committed\n\nLocal C:\\memory-vault: **${snaps.length} snapshots**\nDrive G:\\My Drive: **${driveSnaps} mirrors**\n\nRecent (last 20 newest first):\n${rows}\n\nManually trigger another: \`/vault-snap\`. Sources captured per snapshot: xova-memory + forge-memory + jarvis-src + xova-app-src + xova-tauri.`,
         }]);
@@ -2522,13 +2814,14 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
     // /plugins — list what's in C:\Xova\plugins\ (deterministic, no LLM)
     if (slash === "/plugins" || slash === "/plugin-list") {
       try {
-        const listing = await invoke<Array<{ name: string; size: number; is_dir: boolean }>>("xova_list_dir", { path: "C:\\Xova\\plugins" });
-        const items = (listing || []).filter(e => !e.is_dir).sort((a,b) => a.name.localeCompare(b.name));
-        const fmt = (s: number) => s < 1024 ? `${s}b` : s < 1024*1024 ? `${(s/1024).toFixed(1)}k` : `${(s/1024/1024).toFixed(1)}M`;
-        const rows = items.map(f => {
-          const ext = f.name.split(".").pop() || "";
+        // xova_list_dir returns Vec<String> — bare filenames, no size, no is_dir.
+        // Filter to entries that look like files (have a dot extension); dirs without ext slip through if any.
+        const listing = await invoke<string[]>("xova_list_dir", { path: "C:\\Xova\\plugins" });
+        const items = (listing || []).filter(name => name.includes(".")).sort((a,b) => a.localeCompare(b));
+        const rows = items.map(name => {
+          const ext = name.split(".").pop() || "";
           const tag = ext === "py" ? "🐍" : ext === "sh" ? "🐚" : ext === "svg" ? "🎨" : ext === "wav" ? "🔊" : "·";
-          return `${tag} \`${f.name}\` — ${fmt(f.size)}`;
+          return `${tag} \`${name}\``;
         }).join("\n");
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
           text: `🔌 **C:\\Xova\\plugins\\** — ${items.length} items\n\n${rows}\n\nRun a plugin: \`/plugin <name>\`. Or open the Plugins panel via Control Panel → plugins tab.`,
@@ -2582,39 +2875,44 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
       }
       return;
     }
-    // /jarvis-status — probe Jarvis daemon + bridge listener without restarting
+    // /jarvis-status — probe Jarvis daemon + bridge listener without restarting.
+    // Uses a Python helper (D:\temp\jarvis_health.py) because the previous inline
+    // PowerShell pipeline (Where-Object + @{calculated property}) didn't survive
+    // cmd /C wrapping — $_ tokens got stripped, returning 0 procs even when the
+    // daemon was alive. Helper drives PowerShell with a clean argv form.
     if (slash === "/jarvis-status" || slash === "/jarvis-health") {
       try {
-        const psRaw = await invoke<string>("xova_run", {
-          command: `powershell -NoProfile -Command "Get-Process pythonw -ErrorAction SilentlyContinue | Where-Object { $_.Path -like 'C:\\jarvis\\*' -or $_.MainWindowTitle -like '*jarvis*' } | Select-Object Id, StartTime, @{N='MemMB';E={[math]::Round($_.WorkingSet64/1MB,0)}} | ConvertTo-Json -Compress"`,
+        const raw = await invoke<string>("xova_run", {
+          command: `python D:\\temp\\jarvis_health.py`,
           cwd: null, elevated: false,
         });
-        const psWrap = JSON.parse(psRaw) as { exit: number; stdout: string };
-        let procs: Array<{ Id: number; StartTime: string; MemMB: number }> = [];
-        try {
-          const parsed = JSON.parse(psWrap.stdout.trim() || "[]");
-          procs = Array.isArray(parsed) ? parsed : [parsed];
-        } catch {}
-        // Check bridge mailbox freshness
-        let voiceAge = -1, jarvisInboxAge = -1;
-        try {
-          const v = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\voice_inbox.json" });
-          const vd = JSON.parse(v);
-          voiceAge = vd.ts ? (Date.now() - vd.ts) / 1000 : -1;
-        } catch {}
-        try {
-          const j = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\jarvis_inbox.json" });
-          const jd = JSON.parse(j);
-          jarvisInboxAge = jd.ts ? (Date.now() - jd.ts) / 1000 : -1;
-        } catch {}
-        const procsLine = procs.length
-          ? procs.map(p => `  · PID ${p.Id} · started ${p.StartTime} · ${p.MemMB} MB`).join("\n")
-          : "  (no Jarvis pythonw processes found — daemon DOWN)";
-        const verdict = procs.length === 0
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        if (wrap.exit !== 0) {
+          throw new Error(`helper exit ${wrap.exit}: ${(wrap.stderr || "").slice(0, 300)}`);
+        }
+        const data = JSON.parse(wrap.stdout.trim());
+        const procs = (data.procs || []) as Array<{ Id: number; ExePath?: string; CommandLine?: string; MemMB: number; StartTime?: string }>;
+        const voiceAge = data.voice_age_s as number | null;
+        const jarvisInboxAge = data.jarvis_inbox_age_s as number | null;
+        const dbAlive = !!data.db_alive;
+        const verdictRaw = data.verdict as string;
+        const verdict = verdictRaw === "DOWN"
           ? "✗ DAEMON DOWN"
-          : (voiceAge > 600 || voiceAge < 0)
-            ? "⚠ DAEMON UP, BRIDGE STALE (listener thread may be stuck)"
-            : "✓ DAEMON UP, BRIDGE FRESH";
+          : verdictRaw === "IDLE"
+            ? "○ DAEMON UP, IDLE (processes alive; no recent SQLite/voice activity — Adam hasn't talked to Jarvis in >10min, that's normal idle state)"
+            : verdictRaw === "STALE"
+              ? "⚠ DAEMON UP, BRIDGE STALE (no fresh reply in voice_inbox >10min)"
+              : "✓ DAEMON UP, BRIDGE FRESH";
+        // Tauri's xova.exe lacks privilege to read other processes' Path/CommandLine
+        // (Windows process security at medium integrity). Fall back to SQLite WAL recency
+        // as the liveness signal — if Jarvis is writing to its knowledge graph, it's alive.
+        const procsLine = procs.length
+          ? procs.map(p => p.ExePath?.includes("hidden by Win11")
+              ? `  · PID ${p.Id} · (path hidden by Win11; ${p.MemMB} MB) — likely Jarvis pythonw`
+              : `  · PID ${p.Id} · ${p.ExePath ?? "?"} · started ${p.StartTime ?? "?"} · ${p.MemMB} MB`).join("\n")
+          : dbAlive
+            ? "  (no pythonw processes seen; Jarvis SQLite WAL recently active — somehow alive without visible processes)"
+            : "  (no Jarvis pythonw processes found and SQLite WAL stale — daemon DOWN)";
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
           text:
 `🎙 **Jarvis status** — ${verdict}
@@ -2623,23 +2921,25 @@ Processes:
 ${procsLine}
 
 Bridge files:
-  · voice_inbox.json (Jarvis→Xova replies):  ${voiceAge >= 0 ? `${voiceAge.toFixed(0)}s ago` : "missing"}
-  · jarvis_inbox.json (Xova/Forge→Jarvis):   ${jarvisInboxAge >= 0 ? `${jarvisInboxAge.toFixed(0)}s ago` : "missing"}
+  · voice_inbox.json (Jarvis→Xova replies):  ${voiceAge !== null ? `${voiceAge}s ago` : "missing"}
+  · jarvis_inbox.json (Xova/Forge→Jarvis):   ${jarvisInboxAge !== null ? `${jarvisInboxAge}s ago` : "missing"}
 
-If bridge stale > 10min while daemon up: XovaInboxListener thread stuck. Recovery requires daemon restart (kills in-memory state — needs your yes per attempt). Voice path through mic still works regardless.`,
+If bridge stale > 10min while daemon up: listener may have stalled — try a fresh ping (write to jarvis_inbox.json with current ts) before assuming a restart is needed. Voice path through mic still works regardless.`,
         }]);
       } catch (e) {
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
-          text: `cannot probe Jarvis: ${String(e).slice(0, 200)}`,
+          text: `cannot probe Jarvis: ${String(e).slice(0, 300)}`,
         }]);
       }
       return;
     }
-    // /vault-snap — manually trigger a memory-vault snapshot from chat
+    // /vault-snap — manually trigger a memory-vault snapshot from chat.
+    // Path has no spaces — drop wrapping double-quotes; cmd /C was eating them
+    // and PowerShell would just open with banner instead of executing the script.
     if (slash === "/vault-snap" || slash === "/snapshot") {
       try {
         const raw = await invoke<string>("xova_run", {
-          command: `powershell -ExecutionPolicy Bypass -File "C:\\memory-vault\\snapshot.ps1"`,
+          command: `powershell -ExecutionPolicy Bypass -File C:\\memory-vault\\snapshot.ps1`,
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -2913,9 +3213,11 @@ Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engin
     if (slash === "/trash" || slash.startsWith("/trash ")) {
       const q = text.replace(/^\/trash\s*/i, "").trim();
       try {
+        // Path has no spaces — drop the wrapping double-quotes; xova_run wraps via cmd /c
+        // and the literal quotes leaked through to Python as part of the filename.
         const cmd = q
-          ? `python "D:\\temp\\trash_keeper.py" search "${q.replace(/"/g, '\\"')}"`
-          : `python "D:\\temp\\trash_keeper.py" list 20`;
+          ? `python D:\\temp\\trash_keeper.py search "${q.replace(/"/g, '\\"')}"`
+          : `python D:\\temp\\trash_keeper.py list 20`;
         const raw = await invoke<string>("xova_run", { command: cmd, cwd: null, elevated: false });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         const out = wrap.stdout || wrap.stderr;
@@ -2960,7 +3262,8 @@ Source: \`recursive-field-math-pro/src/recursive_field_math/evolution/meta_engin
       const [, id, ...targetParts] = parts;
       const target = targetParts.join(" ");
       try {
-        const cmd = `python "D:\\temp\\trash_keeper.py" restore "${id}" "${target.replace(/"/g, '\\"')}"`;
+        // Path has no spaces — bare path; quote only the args that may contain spaces.
+        const cmd = `python D:\\temp\\trash_keeper.py restore "${id}" "${target.replace(/"/g, '\\"')}"`;
         const raw = await invoke<string>("xova_run", { command: cmd, cwd: null, elevated: false });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
         const out = wrap.stdout || wrap.stderr;
@@ -3447,6 +3750,16 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
                 notes: typeof parsed.notes === "string" ? parsed.notes.slice(0, 200) : undefined,
               };
               setMessages((prev) => prev.map((mm) => mm.id === placeholderId ? { ...mm, selfEval: ev } : mm));
+              // Always log the self-eval result to forge_events.jsonl, not just
+              // the high-risk ones. This gives the gap audit (Task #6 from
+              // 2026-05-02) a real firing-rate signal: every reply's risk +
+              // answered flag is on the timeline, so confidence calibration
+              // (Task #7) can later compute accuracy.
+              logForgeEvent(
+                "self-eval",
+                `risk ${ev.hallucinationRisk}/5 · answered=${ev.answered}: ${ev.notes ?? ""}`,
+                { user_query: text.slice(0, 200), risk: ev.hallucinationRisk, answered: ev.answered },
+              );
               // Feed the score into the GlyphPhaseEngine — Adam's substrate
               // library tracking Xova's runtime coherence. Round 106 integration.
               xovaPhase.processSymbolicInput(text);
@@ -3641,7 +3954,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
               });
             } else if (fn === "xova_ask_jarvis") {
               toolResult = await invoke<string>("xova_ask_jarvis", {
-                text: String(args.text || ""),
+                text: compressForJarvisFastPath(String(args.text || "")),
               });
             }
             // Cap each tool result at ~4KB before feeding back to the LLM —
@@ -3942,6 +4255,13 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           { id: "p-sysinfo",   group: "Cognition", label: "🖥 System self-awareness (host/RAM/models/LAN IP)",      hint: "/sysinfo",   run: () => onSend("/sysinfo") },
           { id: "p-swan-check",group: "Cognition", label: "🦢 Swan DOM check (verify watermark mounted)",          hint: "/swan-check",run: () => onSend("/swan-check") },
           { id: "p-jarvis-status", group: "Cognition", label: "🎙 Jarvis status (daemon + bridge health)",         hint: "/jarvis-status", run: () => onSend("/jarvis-status") },
+          { id: "p-agi-stack",    group: "Cognition", label: "🧠 AGI stack architecture (canonical doc, 5 subsystems)", hint: "/agi-stack",    run: () => onSend("/agi-stack") },
+          { id: "p-swarm",        group: "Cognition", label: "🐝 Swarm probe (CellShards + CoherenceGovernor + execute round-trip)", hint: "/swarm",      run: () => onSend("/swarm") },
+          { id: "p-calibration",  group: "Cognition", label: "🎯 Confidence calibration (self-eval risk distribution + threshold tune)", hint: "/calibration", run: () => onSend("/calibration") },
+          { id: "p-agent",        group: "Cognition", label: "🤖 Agent loop (autonomous Ollama→tool→observe REPL)", hint: "/agent <goal>", run: () => { /* needs args, surface as hint */ } },
+          { id: "p-shell",        group: "System",    label: "⌨ Persistent shell (cwd survives between calls)", hint: "/shell <command>", run: () => { /* needs args */ } },
+          { id: "p-sync-facts",   group: "Cognition", label: "🧠↔🎙 Sync Jarvis memory → standing-facts (cross-AI federation)", hint: "/sync-facts", run: () => onSend("/sync-facts") },
+          { id: "p-standing-facts", group: "Cognition", label: "🧠 Show standing facts (User/World/Directives, deduped)", hint: "/standing-facts", run: () => onSend("/standing-facts") },
           { id: "p-vault-snap",    group: "Cognition", label: "📸 Take vault snapshot (manual)",                  hint: "/vault-snap",    run: () => onSend("/vault-snap") },
           // Pre-existing capabilities surfaced as deterministic slashes (bypass 3B-model hallucination)
           { id: "p-plugins",   group: "Workspace", label: "🔌 List plugins (C:\\Xova\\plugins)",              hint: "/plugins", run: () => onSend("/plugins") },
