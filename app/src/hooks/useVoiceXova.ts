@@ -57,7 +57,12 @@ export const useVoiceXova = (onCommand: (text: string) => void) => {
     }
 
     rec.onerror = (e: SpeechRecognitionErrorEvent) => {
-      if (e.error !== 'no-speech') console.warn('Voice error:', e.error)
+      // Non-critical voice recogniser error. Surface via the same activity
+      // channel App.tsx uses, not console.warn (Codex law 25 — every emitted
+      // line is visible somewhere accountable).
+      if (e.error !== 'no-speech') {
+        window.dispatchEvent(new CustomEvent('xova-activity', { detail: `voice error: ${e.error}` }))
+      }
     }
 
     rec.onend = () => {

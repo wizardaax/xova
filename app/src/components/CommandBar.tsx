@@ -155,7 +155,9 @@ export function CommandBar({ onSend, isBusy, onStop }: CommandBarProps) {
         };
         tick();
       } catch (e) {
-        console.warn("Mic level error:", e);
+        // Surface via xova-activity event so it lands in the activity panel
+        // instead of the dev-tools console (which most users don't open).
+        window.dispatchEvent(new CustomEvent('xova-activity', { detail: `mic level error: ${e}` }));
       }
     })();
 

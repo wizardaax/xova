@@ -541,6 +541,18 @@ function App() {
     return () => window.removeEventListener("xova-snapshot", onSnap);
   }, [pushActivity]);
 
+  // Forward CustomEvent('xova-activity') -> pushActivity so component-internal
+  // hooks (useVoiceXova, CommandBar mic level) can surface non-critical
+  // errors without console.warn. Replaces left-over console.warn calls.
+  useEffect(() => {
+    const onActivity = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (typeof detail === "string" && detail.length > 0) pushActivity(detail);
+    };
+    window.addEventListener("xova-activity", onActivity);
+    return () => window.removeEventListener("xova-activity", onActivity);
+  }, [pushActivity]);
+
   // Window-level paste handler — Ctrl+V image straight into chat.
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
@@ -1376,16 +1388,26 @@ function App() {
     }
     const editMatch = text.trim().match(/^\/edit\s+([\s\S]+)$/i);
     if (editMatch) {
-      const path = editMatch[1].trim();
+      const rawPath = editMatch[1].trim();
+      // Reject paths containing double-quotes — they break shell parsing and
+      // (less importantly) could be a command-injection vector. cmd has no
+      // canonical escape for " inside a quoted string; safest path is to refuse.
+      if (rawPath.includes('"')) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(),
+          text: `/edit refused: path contains a double-quote character (cmd parsing unsafe). Rename or move the file first.`,
+        }]);
+        return;
+      }
       try {
-        await invoke("xova_run", { command: `notepad "${path}"`, cwd: null, elevated: false });
-        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `opened ${path} in notepad` }]);
+        await invoke("xova_run", { command: `notepad "${rawPath}"`, cwd: null, elevated: false });
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: `opened ${rawPath} in notepad` }]);
       } catch (e) { pushActivity(`edit failed: ${e}`); }
       return;
     }
     if (slash === "/cmd" || slash === "/terminal") {
       try {
-        await invoke("xova_run", { command: "start cmd.exe /K \"cd /d C:\\Xova\\app\"", cwd: null, elevated: false });
+        // Path has no spaces — drop the inner quotes for cmd /C robustness.
+        await invoke("xova_run", { command: "start cmd.exe /K cd /d C:\\Xova\\app", cwd: null, elevated: false });
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}`, role: "xova", ts: Date.now(), text: "opened terminal at C:\\Xova\\app" }]);
       } catch (e) { pushActivity(`cmd failed: ${e}`); }
       return;
@@ -3112,28 +3134,30 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       try {
         const checks: Array<[string, string]> = [];
         // 1. AEON Engine — deterministic physics
-        const r1 = await invoke<string>("xova_run", { command: `python "D:\\github\\wizardaax\\ziltrix-sch-core\\aeon_engine.py"`, cwd: null, elevated: false });
+        // Paths have no spaces — drop wrapping quotes to avoid cmd /C quote-leak
+        // (same bug class as /trash, /vault-snap, /jarvis-status fixed earlier).
+        const r1 = await invoke<string>("xova_run", { command: `python D:\\github\\wizardaax\\ziltrix-sch-core\\aeon_engine.py`, cwd: null, elevated: false });
         const w1 = JSON.parse(r1) as { exit: number; stdout: string };
         if (w1.exit === 0) {
           const d = JSON.parse(w1.stdout);
           checks.push(["AEON Engine", `validation matched=${d.validation?.matched} max_rel_err=${(d.validation?.max_rel_err*100).toFixed(2)}% (vs PhaseII PDF reference)`]);
         }
         // 2. Cognitive cycle — fresh run, crest stamp
-        const r2 = await invoke<string>("xova_run", { command: `python "C:\\Xova\\memory\\run_cycle.py" "verify run"`, cwd: null, elevated: false });
+        const r2 = await invoke<string>("xova_run", { command: `python C:\\Xova\\memory\\run_cycle.py "verify run"`, cwd: null, elevated: false });
         const w2 = JSON.parse(r2) as { exit: number; stdout: string };
         if (w2.exit === 0) {
           const d = JSON.parse(w2.stdout);
           checks.push(["Cognitive cycle", `${d.results_returned} agents fired, crest=${d.crest}, sha256=${d.sha256?.slice(0,16)}…`]);
         }
         // 3. EvolutionEngine
-        const r3 = await invoke<string>("xova_run", { command: `python "C:\\Xova\\memory\\run_evolution.py"`, cwd: null, elevated: false });
+        const r3 = await invoke<string>("xova_run", { command: `python C:\\Xova\\memory\\run_evolution.py`, cwd: null, elevated: false });
         const w3 = JSON.parse(r3) as { exit: number; stdout: string };
         if (w3.exit === 0) {
           const d = JSON.parse(w3.stdout);
           checks.push(["EvolutionEngine", `${d.observed?.agents} agents observed, ${d.proposed} proposals, ${d.applied} applied (engine phase ${d.state?.phase})`]);
         }
         // 4. Trash keeper
-        const r4 = await invoke<string>("xova_run", { command: `python "D:\\temp\\trash_keeper.py" stats`, cwd: null, elevated: false });
+        const r4 = await invoke<string>("xova_run", { command: `python D:\\temp\\trash_keeper.py stats`, cwd: null, elevated: false });
         const w4 = JSON.parse(r4) as { exit: number; stdout: string };
         if (w4.exit === 0) {
           const d = JSON.parse(w4.stdout);
@@ -4166,10 +4190,25 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
         <button
           onClick={async () => {
             if (jarvisRunning) {
+              // Killing Jarvis daemon = process termination = data loss (in-memory
+              // dialogue state, hot model state, listener thread). Per
+              // feedback_no_restarts_ever.md, the user must explicitly confirm
+              // each kill. The CommandLine -match filter avoids the Win11 Path-null
+              // problem where medium-integrity callers see Path as null.
+              const confirmed = window.confirm(
+                "Kill Jarvis daemon?\n\n" +
+                "This is a process termination, not a soft mute. It loses:\n" +
+                "  - in-memory dialogue context\n" +
+                "  - hot model state (Ollama keep_alive)\n" +
+                "  - active listener thread\n\n" +
+                "SQLite knowledge graph survives.\n\n" +
+                "Click OK only if you actually want to kill the daemon."
+              );
+              if (!confirmed) { pushActivity("kill cancelled"); return; }
               try {
-                await invoke("xova_run", { command: "powershell -NoProfile -Command \"Get-Process pythonw -ErrorAction SilentlyContinue | Where-Object { $_.Path -like 'C:\\jarvis\\*' } | Stop-Process -Force\"", cwd: null, elevated: false });
-                pushActivity("muted jarvis"); setJarvisRunning(false);
-              } catch (e) { pushActivity(`mute failed: ${e}`); }
+                await invoke("xova_run", { command: "powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='pythonw.exe'\\\" | Where-Object { $_.CommandLine -match 'jarvis.daemon' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\"", cwd: null, elevated: false });
+                pushActivity("killed jarvis daemon (user-confirmed)"); setJarvisRunning(false);
+              } catch (e) { pushActivity(`kill failed: ${e}`); }
             } else {
               try {
                 await invoke("xova_run", { command: "powershell -NoProfile -Command \"$env:PYTHONPATH='C:\\jarvis\\src'; Start-Process 'C:\\jarvis\\.venv\\Scripts\\pythonw.exe' -ArgumentList '-m','jarvis.daemon' -WorkingDirectory 'C:\\jarvis' -WindowStyle Hidden\"", cwd: null, elevated: false });
@@ -4177,9 +4216,9 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
               } catch (e) { pushActivity(`wake failed: ${e}`); }
             }
           }}
-          title={jarvisRunning ? "Mute Jarvis daemon" : "Wake Jarvis daemon"}
+          title={jarvisRunning ? "Kill Jarvis daemon (data loss — confirm dialog)" : "Wake Jarvis daemon"}
           className={`h-7 px-2 rounded border bg-zinc-900 ${jarvisRunning ? "border-zinc-800 text-zinc-400 hover:border-rose-500 hover:text-rose-400" : "border-rose-800 text-rose-400 hover:border-emerald-600 hover:text-emerald-400"}`}
-        >{jarvisRunning ? "🔇 jarvis" : "🎙 wake"}</button>
+        >{jarvisRunning ? "✗ kill jarvis" : "🎙 wake"}</button>
       </div>
       {Object.keys(templateMap).length > 0 && (
         <div className="px-6 py-1 shrink-0 border-t border-zinc-900 bg-zinc-950 flex items-center gap-1 text-[10px] font-mono overflow-x-auto">
@@ -4315,11 +4354,25 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
             pushActivity("opened build-mode admin terminal");
           }},
           { id: "p-settings", group: "System", label: "⚙ Settings (Ollama model, ctx)", run: () => setSettingsOpen(true) },
-          { id: "p-mute",     group: "System", label: jarvisRunning ? "🔇 Mute Jarvis (kill daemon)" : "🎙 Wake Jarvis (start daemon)", run: async () => {
+          { id: "p-mute",     group: "System", label: jarvisRunning ? "✗ Kill Jarvis daemon (data loss — confirm dialog)" : "🎙 Wake Jarvis daemon (start)", run: async () => {
             if (jarvisRunning) {
-              try { await invoke("xova_run", { command: "powershell -NoProfile -Command \"Get-Process pythonw -ErrorAction SilentlyContinue | Where-Object { $_.Path -like 'C:\\jarvis\\*' } | Stop-Process -Force\"", cwd: null, elevated: false }); pushActivity("muted jarvis"); setJarvisRunning(false); } catch {}
+              // Same confirm-gate + CommandLine-match filter as the toolbar button.
+              const confirmed = window.confirm(
+                "Kill Jarvis daemon?\n\n" +
+                "Loses: in-memory dialogue, hot model state, listener thread.\n" +
+                "Survives: SQLite knowledge graph.\n\n" +
+                "Click OK only if you actually want to kill the daemon."
+              );
+              if (!confirmed) { pushActivity("kill cancelled"); return; }
+              try {
+                await invoke("xova_run", { command: "powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='pythonw.exe'\\\" | Where-Object { $_.CommandLine -match 'jarvis.daemon' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\"", cwd: null, elevated: false });
+                pushActivity("killed jarvis daemon (user-confirmed)"); setJarvisRunning(false);
+              } catch (e) { pushActivity(`kill failed: ${e}`); }
             } else {
-              try { await invoke("xova_run", { command: "powershell -NoProfile -Command \"$env:PYTHONPATH='C:\\jarvis\\src'; Start-Process 'C:\\jarvis\\.venv\\Scripts\\pythonw.exe' -ArgumentList '-m','jarvis.daemon' -WorkingDirectory 'C:\\jarvis' -WindowStyle Hidden\"", cwd: null, elevated: false }); pushActivity("waking jarvis"); setJarvisRunning(true); } catch {}
+              try {
+                await invoke("xova_run", { command: "powershell -NoProfile -Command \"$env:PYTHONPATH='C:\\jarvis\\src'; Start-Process 'C:\\jarvis\\.venv\\Scripts\\pythonw.exe' -ArgumentList '-m','jarvis.daemon' -WorkingDirectory 'C:\\jarvis' -WindowStyle Hidden\"", cwd: null, elevated: false });
+                pushActivity("waking jarvis"); setJarvisRunning(true);
+              } catch (e) { pushActivity(`wake failed: ${e}`); }
             }
           } },
           // Findings — mirrors what's on wizardaax.github.io
