@@ -1180,6 +1180,111 @@ fn xova_run(command: String, cwd: Option<String>, elevated: Option<bool>) -> Res
     }).to_string())
 }
 
+/// Read all project_*.md and feedback_*.md files from the memory dir and
+/// concatenate them as a context block. ~30KB total — well within Opus context
+/// budget. Returns empty string if the dir doesn't exist (fail soft).
+fn load_memory_context() -> String {
+    let memory_dir = r"D:\.claude\projects\C--Users-adz-7\memory";
+    let mut out = String::new();
+    out.push_str("# Project memory (Adam's persistent context for Claude across sessions)\n\n");
+    // MEMORY.md first (the index)
+    if let Ok(s) = std::fs::read_to_string(format!(r"{}\MEMORY.md", memory_dir)) {
+        out.push_str("## MEMORY.md (index)\n\n");
+        out.push_str(&s);
+        out.push_str("\n\n");
+    }
+    // Then all project_*.md and feedback_*.md (skip session_*.md — too verbose)
+    if let Ok(entries) = std::fs::read_dir(memory_dir) {
+        let mut paths: Vec<_> = entries.flatten()
+            .filter_map(|e| e.path().to_str().map(String::from))
+            .filter(|p| {
+                let lc = p.to_lowercase();
+                (lc.contains("project_") || lc.contains("feedback_") || lc.contains("user_")) && lc.ends_with(".md")
+            })
+            .collect();
+        paths.sort();
+        for p in paths {
+            if let Ok(s) = std::fs::read_to_string(&p) {
+                let name = p.rsplit('\\').next().unwrap_or(&p);
+                out.push_str(&format!("## {}\n\n", name));
+                out.push_str(&s);
+                out.push_str("\n\n");
+            }
+        }
+    }
+    out
+}
+
+/// Summon Opus-class capability: subprocesses `claude --print "<prompt>"` and
+/// returns the full response. Uses Adam's existing Claude Code subscription —
+/// no API key handling inside Xova. Slow (~2-15s typical) but answers are
+/// orders-of-magnitude smarter than the local Ollama model for synthesis,
+/// code, and multi-domain reasoning. Default 2-minute timeout.
+///
+/// Prepends the project memory directory (project_*.md, feedback_*.md, user_*.md)
+/// as context so summoned Claude knows about AEON, the cognitive loop, etc. —
+/// not a fresh stranger every call.
+#[tauri::command]
+fn xova_ask_claude(prompt: String, timeout_secs: Option<u64>) -> Result<String, String> {
+    use std::time::Duration;
+    let timeout = Duration::from_secs(timeout_secs.unwrap_or(120));
+
+    // Build the full prompt: project memory context + the user's question.
+    let memory = load_memory_context();
+    let full_prompt = if memory.is_empty() {
+        prompt.clone()
+    } else {
+        format!(
+            "{}\n\n---\n\n# User question\n\n{}\n\n---\n\nAnswer the user's question above using the project memory as context. Be direct.",
+            memory, prompt
+        )
+    };
+
+    // Spawn `claude --print --output-format text "<full_prompt>"`. On Windows,
+    // npm installs `claude` as a `.cmd` shim that Rust's Command::new doesn't
+    // auto-resolve (it searches for .exe). Route through cmd /C so the shell
+    // handles extension resolution.
+    let mut cmd = Command::new("cmd");
+    cmd.args(["/C", "claude", "--print", "--output-format", "text"]);
+    cmd.arg(&full_prompt);
+    no_window(&mut cmd);
+
+    let mut child = cmd
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("claude CLI not on PATH: {} — install Claude Code first", e))?;
+
+    // Wait with a timeout so a hung subprocess doesn't lock up Xova.
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_status)) => break,
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    let _ = child.kill();
+                    return Err(format!("claude timed out after {}s", timeout.as_secs()));
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            Err(e) => return Err(format!("wait failed: {}", e)),
+        }
+    }
+
+    let output = child
+        .wait_with_output()
+        .map_err(|e| format!("output capture failed: {}", e))?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    let exit = output.status.code().unwrap_or(-1);
+    Ok(serde_json::json!({
+        "exit": exit,
+        "stdout": stdout.trim().to_string(),
+        "stderr": stderr.trim().to_string(),
+    }).to_string())
+}
+
 #[tauri::command]
 fn xova_list_plugins() -> Result<Vec<String>, String> {
     let entries = std::fs::read_dir("C:\\Xova\\plugins").map_err(|e| e.to_string())?;
@@ -1554,6 +1659,7 @@ pub fn run() {
             xova_jarvis,
             xova_field,
             xova_build_tool,
+            xova_ask_claude,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Xova");

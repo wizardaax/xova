@@ -14,13 +14,15 @@ interface StatusBarProps {
   isBusy: boolean;
   /** Did Jarvis just speak (within last 8s)? Drives the listening dot. */
   jarvisSpoke: boolean;
+  /** GlyphPhaseEngine state — Xova's runtime coherence per Adam's substrate. */
+  phase?: string;
 }
 
 /**
  * Top-of-window health/state strip. Pulls live state every 5s. Tells you at a
  * glance which side is up and what's loaded on the GPU.
  */
-export function StatusBar({ isBusy, jarvisSpoke }: StatusBarProps) {
+export function StatusBar({ isBusy, jarvisSpoke, phase }: StatusBarProps) {
   const [status, setStatus] = useState<Status | null>(null);
 
   useEffect(() => {
@@ -131,6 +133,29 @@ export function StatusBar({ isBusy, jarvisSpoke }: StatusBarProps) {
         <span className={`w-1.5 h-1.5 rounded-full ${dot(ollamaAlive)}`} />
         <span className="uppercase tracking-wider">ollama</span>
       </span>
+      {phase && phase !== "initial" && (
+        <>
+          <span className="text-zinc-800">·</span>
+          <span
+            title={
+              phase === "stabilized" ? "Xova's last reply scored well on self-eval (substrate STABILIZED, glyph_phase_engine)"
+              : phase === "delta_adjustment" ? "Recent replies in delta-adjustment range — moderate convergence"
+              : phase === "error" ? "Recent self-eval flagged high hallucination risk — substrate at ERROR threshold"
+              : phase === "processing" ? "Phase engine processing"
+              : phase
+            }
+            className={`flex items-center gap-1.5 uppercase tracking-wider ${
+              phase === "stabilized" ? "text-emerald-400"
+              : phase === "delta_adjustment" ? "text-amber-400"
+              : phase === "error" ? "text-rose-400"
+              : "text-zinc-500"
+            }`}
+          >
+            <span className="text-[8px]">●</span>
+            <span>phase: {phase === "delta_adjustment" ? "delta" : phase}</span>
+          </span>
+        </>
+      )}
       {loaded.length > 0 && (
         <span className="text-zinc-400 truncate max-w-[260px]" title={loaded.map(m => `${m.name} ${m.vram_gb.toFixed(2)}/${m.size_gb.toFixed(2)}GB`).join(" · ")}>
           {loaded.map(m => `${m.name.split(":")[0]} ${m.vram_gb.toFixed(1)}G`).join(" · ")}

@@ -143,17 +143,40 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
             <div className="text-zinc-300 text-base mb-1 font-mono">r = c√n &nbsp;·&nbsp; θ = nφ</div>
             <div className="text-zinc-600 mb-6 text-xs font-mono uppercase tracking-wider">Recursive Field Framework — substrate active</div>
             {onSuggest && (
-              <div className="flex flex-wrap gap-2 justify-center">
-                {STARTER_PROMPTS.map((p) => (
-                  <button
-                    key={p}
-                    onClick={() => onSuggest(p)}
-                    className="px-3 py-1.5 text-xs font-mono rounded border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-emerald-600 hover:text-emerald-400 transition-colors"
-                  >
-                    {p}
-                  </button>
-                ))}
-              </div>
+              <>
+                <div className="flex flex-wrap gap-2 justify-center mb-4">
+                  {STARTER_PROMPTS.map((p) => (
+                    <button
+                      key={p}
+                      onClick={() => onSuggest(p)}
+                      className="px-3 py-1.5 text-xs font-mono rounded border border-zinc-800 bg-zinc-900 text-zinc-300 hover:border-emerald-600 hover:text-emerald-400 transition-colors"
+                    >
+                      {p}
+                    </button>
+                  ))}
+                </div>
+                <div className="text-[10px] uppercase tracking-wider text-zinc-700 mb-2 mt-6">framework visualisations</div>
+                <div className="flex flex-wrap gap-1.5 justify-center">
+                  {[
+                    { n: 1, label: "Riemann-Spiral" },
+                    { n: 2, label: "Recursive Field Math" },
+                    { n: 3, label: "Codex Entropy Pump" },
+                    { n: 4, label: "Snell-Vern Drive Matrix" },
+                    { n: 5, label: "Glyph Phase Engine" },
+                    { n: 6, label: "Codex-AEON-Resonator" },
+                    { n: 7, label: "SCE-88 Architecture" },
+                  ].map((s) => (
+                    <button
+                      key={s.n}
+                      onClick={() => onSuggest(`/sim ${s.n}`)}
+                      className="px-2 py-1 text-[10px] font-mono rounded border border-zinc-900 bg-zinc-950 text-zinc-500 hover:border-purple-600 hover:text-purple-400 transition-colors"
+                      title={`/sim ${s.n} — ${s.label}`}
+                    >
+                      {s.n}. {s.label}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </div>
         )}

@@ -4,15 +4,17 @@ import { CameraTile } from "./CameraTile";
 import { FeedTile } from "./FeedTile";
 import { PhonePicker } from "./PhonePicker";
 import { MemoryPanel } from "./MemoryPanel";
+import { NavigatorTile } from "./NavigatorTile";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
-  { id: "camera", label: "Camera", emoji: "📷" },
-  { id: "feed",   label: "Feed",   emoji: "🔒" },
-  { id: "phones", label: "Phones", emoji: "📱" },
-  { id: "memory", label: "Memory", emoji: "🧠" },
+  { id: "camera",    label: "Camera",    emoji: "📷" },
+  { id: "feed",      label: "Feed",      emoji: "🔒" },
+  { id: "phones",    label: "Phones",    emoji: "📱" },
+  { id: "memory",    label: "Memory",    emoji: "🧠" },
+  { id: "navigator", label: "Navigator", emoji: "🦢" },
 ];
 
 interface WorkspaceDockProps {
@@ -79,6 +81,7 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "feed"   && <FeedTile onClose={() => onTab(null)} />}
             {activeTab === "phones" && <PhonePicker onClose={() => onTab(null)} />}
             {activeTab === "memory" && <MemoryPanel onClose={() => onTab(null)} />}
+            {activeTab === "navigator" && <NavigatorTile onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
