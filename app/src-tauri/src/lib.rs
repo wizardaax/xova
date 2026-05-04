@@ -17,6 +17,79 @@ fn no_window(cmd: &mut Command) -> &mut Command {
     cmd
 }
 
+/// Allowed filesystem roots for LLM-driven file operations (CRIT-1).
+/// Any path outside these prefixes is rejected before any I/O occurs.
+const ALLOWED_PATH_ROOTS: &[&str] = &[
+    "c:\\xova\\",
+    "c:\\jarvis\\",
+    "d:\\github\\wizardaax\\",
+    "d:\\repos\\wizardaax\\",
+];
+
+/// Allowed commands for xova_run (non-elevated) (CRIT-2).
+const ALLOWED_COMMANDS: &[&str] = &[
+    "git", "npm", "cargo", "python", "python3",
+    "pwsh", "powershell", "dir", "ls", "pytest", "ruff",
+];
+
+/// Allowed commands for xova_run with elevated=true.
+/// Empty by default — elevation is denied unless explicitly added here.
+const ALLOWED_ELEVATED_COMMANDS: &[&str] = &[];
+
+/// Normalize a raw path (resolve `.` and `..` without requiring the path to
+/// exist on disk) and check it against ALLOWED_PATH_ROOTS. Returns the
+/// normalized PathBuf on success, or an Err describing the denial.
+fn path_allowed(raw: &str) -> Result<std::path::PathBuf, String> {
+    use std::path::{Component, PathBuf};
+    let mut normalized = PathBuf::new();
+    for comp in std::path::Path::new(raw).components() {
+        match comp {
+            Component::ParentDir => { normalized.pop(); }
+            Component::CurDir    => {}
+            c                    => normalized.push(c),
+        }
+    }
+    let norm_lower = normalized.to_string_lossy().to_ascii_lowercase();
+    if ALLOWED_PATH_ROOTS.iter().any(|r| norm_lower.starts_with(r)) {
+        Ok(normalized)
+    } else {
+        Err(format!(
+            "access denied: '{}' is outside allowed roots \
+             (C:\\Xova, C:\\jarvis, D:\\github\\wizardaax, D:\\repos\\wizardaax)",
+            normalized.display()
+        ))
+    }
+}
+
+/// Extract the bare command name from the first token of a shell command string
+/// (strips leading path components and .exe/.cmd extension) and check it
+/// against the appropriate allowlist. Returns Err with a clear denial message
+/// if the command is not permitted.
+fn command_allowed(cmd: &str, elevated: bool) -> Result<(), String> {
+    let first = cmd.trim().split_whitespace().next().unwrap_or("");
+    let name_lower = std::path::Path::new(first)
+        .file_stem()
+        .and_then(|s| s.to_str())
+        .unwrap_or(first)
+        .to_ascii_lowercase();
+    let list = if elevated { ALLOWED_ELEVATED_COMMANDS } else { ALLOWED_COMMANDS };
+    if list.iter().any(|a| *a == name_lower.as_str()) {
+        Ok(())
+    } else if elevated {
+        Err(format!(
+            "elevated execution denied: '{}' — no commands are permitted \
+             with elevated=true by default",
+            name_lower
+        ))
+    } else {
+        Err(format!(
+            "command '{}' is not in the allowed list ({})",
+            name_lower,
+            ALLOWED_COMMANDS.join(", ")
+        ))
+    }
+}
+
 /// Remove <think>...</think> blocks (qwen3 thinking-mode output) from a model
 /// reply. Handles unclosed open tags by dropping everything from the first
 /// <think> if no </think> matches.
@@ -40,49 +113,6 @@ fn strip_think_tags(s: &str) -> String {
                 }
             }
         }
-    }
-}
-
-#[tauri::command]
-fn run_command(cmd: String, args: Vec<String>, cwd: Option<String>) -> Result<String, String> {
-    let mut command = Command::new("cmd");
-    command.arg("/C").arg(&cmd);
-    for arg in &args {
-        command.arg(arg);
-    }
-
-    let project_dir = cwd.unwrap_or_else(|| {
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| {
-                let mut dir = p.parent()?.to_path_buf();
-                for _ in 0..5 {
-                    if dir.join("package.json").exists() {
-                        return Some(dir.to_string_lossy().to_string());
-                    }
-                    dir = dir.parent()?.to_path_buf();
-                }
-                None
-            })
-            .unwrap_or_else(|| "C:\\Xova\\app".to_string())
-    });
-
-    command.current_dir(&project_dir);
-    no_window(&mut command);
-
-    let output = command
-        .output()
-        .map_err(|e| format!("Failed to run '{}': {}", cmd, e))?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-    if !stdout.trim().is_empty() {
-        Ok(stdout)
-    } else if !stderr.trim().is_empty() {
-        Ok(stderr)
-    } else {
-        Ok("Done (no output)".to_string())
     }
 }
 
@@ -444,16 +474,16 @@ async fn ollama_chat(
         {"type":"function","function":{"name":"xova_read_codex","description":"Read Adam's Codex laws.","parameters":{"type":"object","properties":{}}}},
         {"type":"function","function":{"name":"xova_speak","description":"Speak text via TTS.","parameters":{"type":"object","properties":{"text":{"type":"string"}},"required":["text"]}}},
         {"type":"function","function":{"name":"xova_jarvis","description":"Multi-step autonomous computer task (>2 actions).","parameters":{"type":"object","properties":{"task":{"type":"string"}},"required":["task"]}}},
-        {"type":"function","function":{"name":"xova_read_file","description":"Read any file. No path restrictions.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
-        {"type":"function","function":{"name":"xova_list_dir","description":"List any directory.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
-        {"type":"function","function":{"name":"xova_write_file","description":"Write/overwrite any file (creates parent dirs).","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}},
-        {"type":"function","function":{"name":"xova_delete_path","description":"Delete a file or directory (recursive).","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
-        {"type":"function","function":{"name":"xova_run","description":"Run any shell command via cmd.exe. Use for opening apps, terminals, CLIs. Set elevated=true for admin (UAC).","parameters":{"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"},"elevated":{"type":"boolean"}},"required":["command"]}}},
+        {"type":"function","function":{"name":"xova_read_file","description":"Read a file. Allowed roots: C:\\Xova\\, C:\\jarvis\\, D:\\github\\wizardaax\\, D:\\repos\\wizardaax\\. Paths outside these roots are rejected.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
+        {"type":"function","function":{"name":"xova_list_dir","description":"List a directory. Allowed roots: C:\\Xova\\, C:\\jarvis\\, D:\\github\\wizardaax\\, D:\\repos\\wizardaax\\. Paths outside these roots are rejected.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
+        {"type":"function","function":{"name":"xova_write_file","description":"Write/overwrite a file (creates parent dirs). Allowed roots: C:\\Xova\\, C:\\jarvis\\, D:\\github\\wizardaax\\, D:\\repos\\wizardaax\\. Paths outside these roots are rejected.","parameters":{"type":"object","properties":{"path":{"type":"string"},"content":{"type":"string"}},"required":["path","content"]}}},
+        {"type":"function","function":{"name":"xova_delete_path","description":"Delete a file or directory (recursive). Allowed roots: C:\\Xova\\, C:\\jarvis\\, D:\\github\\wizardaax\\, D:\\repos\\wizardaax\\. Paths outside these roots are rejected.","parameters":{"type":"object","properties":{"path":{"type":"string"}},"required":["path"]}}},
+        {"type":"function","function":{"name":"xova_run","description":"Run a shell command via cmd.exe. Allowed commands: git, npm, cargo, python, pwsh, powershell, dir, ls, pytest, ruff. All other commands are rejected. elevated=true is denied by default.","parameters":{"type":"object","properties":{"command":{"type":"string"},"cwd":{"type":"string"},"elevated":{"type":"boolean"}},"required":["command"]}}},
         {"type":"function","function":{"name":"xova_ask_jarvis","description":"Delegate to Jarvis butler. Use for: scheduling, reminders, conversational chat, weather, meal logging, web search via Jarvis, anything butler-tone. Jarvis's reply lands in chat as a 🎙 jarvis message.","parameters":{"type":"object","properties":{"text":{"type":"string","description":"What to ask Jarvis"}},"required":["text"]}}},
         {"type":"function","function":{"name":"xova_list_plugins","description":"List available plugins.","parameters":{"type":"object","properties":{}}}},
         {"type":"function","function":{"name":"xova_list_repos","description":"List wizardaax repos.","parameters":{"type":"object","properties":{}}}},
         {"type":"function","function":{"name":"xova_computer","description":"Computer control. action is JSON string with 'cmd' field. cmds: screenshot, screen_size, mouse_pos, move, click, right_click, double_click, drag, scroll, type, press, hotkey, open, run, speak, listen, windows, focus_window, close_window, minimize_window, maximize_window, wait, browser, search.","parameters":{"type":"object","properties":{"action":{"type":"string"}},"required":["action"]}}},
-        {"type":"function","function":{"name":"xova_vision","description":"Describe an image (auto-runs after screenshot — usually you don't call directly).","parameters":{"type":"object","properties":{"image_path":{"type":"string"},"prompt":{"type":"string"}},"required":["image_path"]}}},
+        {"type":"function","function":{"name":"xova_vision","description":"Describe an image (auto-runs after screenshot — usually you don't call directly).","parameters":{"type":"object","properties":{"imagePath":{"type":"string"},"prompt":{"type":"string"}},"required":["imagePath"]}}},
         {"type":"function","function":{"name":"xova_field","description":"Ziltrix ternary field math. Use only for explicit math/coherence/sequence questions, not greetings.","parameters":{"type":"object","properties":{"input":{"type":"string"}},"required":["input"]}}},
         {"type":"function","function":{"name":"xova_build_tool","description":"Install a new tool. target='xova_plugin' (C:\\Xova\\plugins, run() function) or 'jarvis_tool' (Tool subclass body, auto-loaded). py_compile + atomic install only.","parameters":{"type":"object","properties":{"target":{"type":"string","enum":["xova_plugin","jarvis_tool"]},"name":{"type":"string"},"spec":{"type":"string"},"source":{"type":"string"},"class_name":{"type":"string"},"tool_name":{"type":"string"}},"required":["name","spec","source"]}}}
     ]);
@@ -575,12 +605,14 @@ fn xova_read_codex() -> Result<String, String> {
 
 #[tauri::command]
 fn xova_read_file(path: String) -> Result<String, String> {
-    std::fs::read_to_string(&path).map_err(|e| e.to_string())
+    let safe = path_allowed(&path)?;
+    std::fs::read_to_string(&safe).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn xova_list_dir(path: String) -> Result<Vec<String>, String> {
-    let entries = std::fs::read_dir(&path).map_err(|e| e.to_string())?;
+    let safe = path_allowed(&path)?;
+    let entries = std::fs::read_dir(&safe).map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for entry in entries.flatten() {
         if let Some(name) = entry.file_name().to_str() {
@@ -592,24 +624,25 @@ fn xova_list_dir(path: String) -> Result<Vec<String>, String> {
 
 #[tauri::command]
 fn xova_write_file(path: String, content: String) -> Result<String, String> {
-    if let Some(parent) = std::path::Path::new(&path).parent() {
+    let safe = path_allowed(&path)?;
+    if let Some(parent) = safe.parent() {
         if !parent.as_os_str().is_empty() {
             let _ = std::fs::create_dir_all(parent);
         }
     }
-    std::fs::write(&path, content).map_err(|e| e.to_string())?;
-    Ok(path)
+    std::fs::write(&safe, content).map_err(|e| e.to_string())?;
+    Ok(safe.to_string_lossy().to_string())
 }
 
 #[tauri::command]
 fn xova_delete_path(path: String) -> Result<String, String> {
-    let p = std::path::Path::new(&path);
-    if p.is_dir() {
-        std::fs::remove_dir_all(p).map_err(|e| e.to_string())?;
+    let safe = path_allowed(&path)?;
+    if safe.is_dir() {
+        std::fs::remove_dir_all(&safe).map_err(|e| e.to_string())?;
     } else {
-        std::fs::remove_file(p).map_err(|e| e.to_string())?;
+        std::fs::remove_file(&safe).map_err(|e| e.to_string())?;
     }
-    Ok(path)
+    Ok(safe.to_string_lossy().to_string())
 }
 
 /// Send a Windows toast notification via PowerShell + BurntToast-equivalent
@@ -937,18 +970,18 @@ fn xova_send_to_phone(text: String) -> Result<String, String> {
 /// Quick health snapshot for the status panel — Xova self, Jarvis presence,
 /// Ollama loaded model + free VRAM, mesh repo count, recent activity.
 #[tauri::command]
-fn xova_status() -> Result<String, String> {
+async fn xova_status() -> Result<String, String> {
     use std::time::Duration;
-    let client = reqwest::blocking::Client::builder()
+    // Async HTTP — does not block a Tokio worker thread during the 3s timeout.
+    let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(3))
         .build()
         .map_err(|e| format!("client build: {}", e))?;
 
-    // Ollama: which models are loaded + VRAM
     let mut ollama_alive = false;
     let mut loaded_models: Vec<serde_json::Value> = Vec::new();
-    if let Ok(resp) = client.get("http://localhost:11434/api/ps").send() {
-        if let Ok(j) = resp.json::<serde_json::Value>() {
+    if let Ok(resp) = client.get("http://localhost:11434/api/ps").send().await {
+        if let Ok(j) = resp.json::<serde_json::Value>().await {
             ollama_alive = true;
             if let Some(arr) = j.get("models").and_then(|v| v.as_array()) {
                 for m in arr {
@@ -962,32 +995,33 @@ fn xova_status() -> Result<String, String> {
         }
     }
 
-    // Jarvis presence: pythonw process holding a path containing 'jarvis'
-    let mut jarvis_alive = false;
-    let ps = "Get-Process pythonw -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*jarvis*' } | Select-Object -First 1 -ExpandProperty Id";
-    let mut cmd = Command::new("powershell.exe");
-    cmd.args(["-NoProfile", "-Command", ps]);
-    no_window(&mut cmd);
-    if let Ok(out) = cmd.output() {
-        let s = String::from_utf8_lossy(&out.stdout);
-        jarvis_alive = !s.trim().is_empty();
-    }
+    // Subprocess calls (blocking) — offloaded to spawn_blocking so the async
+    // runtime thread is free during the PowerShell + nvidia-smi waits (~1-2s each).
+    let (jarvis_alive, gpu_used_mb, gpu_free_mb) = tokio::task::spawn_blocking(|| {
+        let ps = "Get-Process pythonw -ErrorAction SilentlyContinue | Where-Object { $_.Path -like '*jarvis*' } | Select-Object -First 1 -ExpandProperty Id";
+        let mut cmd = Command::new("powershell.exe");
+        cmd.args(["-NoProfile", "-Command", ps]);
+        no_window(&mut cmd);
+        let jarvis_alive = cmd.output()
+            .map(|out| !String::from_utf8_lossy(&out.stdout).trim().is_empty())
+            .unwrap_or(false);
 
-    // GPU free VRAM via nvidia-smi (if present)
-    let mut gpu_used_mb: i64 = -1;
-    let mut gpu_free_mb: i64 = -1;
-    let mut cmd2 = Command::new("nvidia-smi");
-    cmd2.args(["--query-gpu=memory.used,memory.free", "--format=csv,noheader,nounits"]);
-    no_window(&mut cmd2);
-    if let Ok(out) = cmd2.output() {
-        let s = String::from_utf8_lossy(&out.stdout);
-        let line = s.lines().next().unwrap_or("");
-        let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
-        if parts.len() >= 2 {
-            gpu_used_mb = parts[0].parse().unwrap_or(-1);
-            gpu_free_mb = parts[1].parse().unwrap_or(-1);
+        let mut gpu_used_mb: i64 = -1;
+        let mut gpu_free_mb: i64 = -1;
+        let mut cmd2 = Command::new("nvidia-smi");
+        cmd2.args(["--query-gpu=memory.used,memory.free", "--format=csv,noheader,nounits"]);
+        no_window(&mut cmd2);
+        if let Ok(out) = cmd2.output() {
+            let s = String::from_utf8_lossy(&out.stdout);
+            let line = s.lines().next().unwrap_or("");
+            let parts: Vec<&str> = line.split(',').map(|s| s.trim()).collect();
+            if parts.len() >= 2 {
+                gpu_used_mb = parts[0].parse().unwrap_or(-1);
+                gpu_free_mb = parts[1].parse().unwrap_or(-1);
+            }
         }
-    }
+        (jarvis_alive, gpu_used_mb, gpu_free_mb)
+    }).await.unwrap_or((false, -1, -1));
 
     Ok(serde_json::json!({
         "ts": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0),
@@ -1112,29 +1146,30 @@ fn xova_list_phones() -> Result<String, String> {
 }
 
 #[tauri::command]
-fn xova_ask_jarvis(text: String) -> Result<String, String> {
-    let dir = Path::new(MEMORY_DIR);
-    if !dir.exists() {
-        fs::create_dir_all(dir).map_err(|e| format!("Cannot create memory dir: {}", e))?;
-    }
+async fn xova_ask_jarvis(text: String) -> Result<String, String> {
+    let dir = std::path::PathBuf::from(MEMORY_DIR);
+    tokio::fs::create_dir_all(&dir).await.map_err(|e| format!("Cannot create memory dir: {}", e))?;
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as u64)
         .unwrap_or(0);
     let payload = serde_json::json!({
-        "role": "user",
-        "text": text,
-        "ts": ts,
+        "intent": "ask",
         "from": "xova",
+        "to": "jarvis",
+        "text": text,
+        "correlation_id": format!("xova_{}", ts),
+        "ts": ts,
     });
     let path = dir.join("jarvis_inbox.json");
-    fs::write(&path, payload.to_string())
+    tokio::fs::write(&path, payload.to_string()).await
         .map_err(|e| format!("Cannot write jarvis_inbox: {}", e))?;
     Ok(serde_json::json!({"sent": true, "ts": ts}).to_string())
 }
 
 #[tauri::command]
 fn xova_run(command: String, cwd: Option<String>, elevated: Option<bool>) -> Result<String, String> {
+    command_allowed(&command, elevated.unwrap_or(false))?;
     if elevated.unwrap_or(false) {
         // Launch elevated via PowerShell Start-Process -Verb RunAs. This pops UAC.
         // Output cannot be captured (separate elevated process); return launch status.
@@ -1240,20 +1275,26 @@ fn xova_ask_claude(prompt: String, timeout_secs: Option<u64>) -> Result<String, 
         )
     };
 
-    // Spawn `claude --print --output-format text "<full_prompt>"`. On Windows,
-    // npm installs `claude` as a `.cmd` shim that Rust's Command::new doesn't
-    // auto-resolve (it searches for .exe). Route through cmd /C so the shell
-    // handles extension resolution.
+    // Spawn `claude --print --output-format text` and pipe full_prompt via stdin.
+    // Avoids the 32 KB Windows CLI arg limit that silently truncates large prompts.
+    // On Windows, npm installs `claude` as a `.cmd` shim — route through cmd /C.
     let mut cmd = Command::new("cmd");
     cmd.args(["/C", "claude", "--print", "--output-format", "text"]);
-    cmd.arg(&full_prompt);
     no_window(&mut cmd);
 
     let mut child = cmd
+        .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("claude CLI not on PATH: {} — install Claude Code first", e))?;
+
+    // Write prompt via stdin then close the handle so claude sees EOF.
+    if let Some(mut stdin) = child.stdin.take() {
+        use std::io::Write;
+        stdin.write_all(full_prompt.as_bytes()).ok();
+        // stdin dropped here → EOF sent to child
+    }
 
     // Wait with a timeout so a hung subprocess doesn't lock up Xova.
     let start = std::time::Instant::now();
@@ -1538,6 +1579,14 @@ fn load_chosen_model() -> String {
 pub fn run() {
     warmup_ollama();
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            use tauri::Manager;
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.unminimize();
+                let _ = w.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_shell::init())
         .plugin(
@@ -1619,7 +1668,6 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            run_command,
             list_dir,
             read_file,
             get_drives,

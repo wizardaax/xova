@@ -65,6 +65,11 @@ export async function getMeshStatus(): Promise<MeshStatus> {
   }
 }
 
+// NOTE — double-JSON encoding: saveMemory calls JSON.stringify before passing to
+// Tauri, which writes the string verbatim. The file on disk contains a JSON string
+// wrapping JSON (e.g. "[\"fact1\",...]"). loadMemory does one JSON.parse to recover
+// the value. Any Python reader must do TWO json.loads() calls, or use:
+//   value = json.loads(json.loads(open(path).read()))
 export async function saveMemory(key: string, value: unknown): Promise<void> {
   await invoke("save_memory", { key, value: JSON.stringify(value) });
 }
@@ -99,6 +104,22 @@ export async function loadOllamaSettings(): Promise<OllamaSettings> {
 
 export async function saveOllamaSettings(s: OllamaSettings): Promise<void> {
   await saveMemory(SETTINGS_KEY, s);
+}
+
+export interface MeshFlags {
+  evolutionEnabled: boolean;
+  cognitiveEnabled: boolean;
+  meshRunnerEnabled: boolean;
+  forge_mode: "off" | "live" | "queue";
+}
+export const DEFAULT_MESH_FLAGS: MeshFlags = { evolutionEnabled: true, cognitiveEnabled: true, meshRunnerEnabled: true, forge_mode: "off" };
+export async function loadMeshFlags(): Promise<MeshFlags> {
+  const stored = await loadMemory<MeshFlags>("mesh_flags");
+  if (stored && typeof stored.evolutionEnabled === "boolean") return { ...DEFAULT_MESH_FLAGS, ...stored };
+  return DEFAULT_MESH_FLAGS;
+}
+export async function saveMeshFlags(f: MeshFlags): Promise<void> {
+  await saveMemory("mesh_flags", f);
 }
 
 /**
