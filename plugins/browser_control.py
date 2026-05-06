@@ -219,9 +219,12 @@ def action_send(playwright, site_cfg: dict, prompt: str, headless: bool) -> dict
         if not response_text:
             response_text = "(no response captured — selectors may need updating)"
         else:
-            # Strip aria-live "Claude responded: ..." prefix if present
+            # Strip aria-live "Claude responded: ..." prefix — verify visible text is
+            # duplicated after "\n\n" before stripping to avoid false truncation
             if "\n\n" in response_text and response_text.startswith("Claude responded:"):
-                response_text = response_text.split("\n\n", 1)[-1].strip()
+                parts = response_text.split("\n\n", 1)
+                if len(parts) == 2 and parts[1].strip() and parts[1].strip() in parts[0]:
+                    response_text = parts[1].strip()
 
         return {
             "ok": True,
@@ -242,7 +245,7 @@ def action_screenshot(playwright, site_cfg: dict, headless: bool) -> dict:
     ctx = playwright.chromium.launch_persistent_context(
         PROFILE_DIR, headless=headless,
         args=["--disable-blink-features=AutomationControlled"],
-        no_viewport={"width": 1280, "height": 900},
+        viewport={"width": 1280, "height": 900},
     )
     try:
         page = ctx.new_page()
