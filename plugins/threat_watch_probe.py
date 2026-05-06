@@ -6,15 +6,20 @@ Returns a single JSON line: {ok, level, rule_version, threats, watches, checks, 
 import json, os, subprocess, time
 from datetime import datetime, timezone, timedelta
 
-RULE_VERSION = "1.2"
+RULE_VERSION = "1.3"
 
 SAFE_LISTEN_PORTS = {
-    5174, 5173, 5175, 3000, 8080, 8443,   # dev servers / Vite HMR
-    11434, 11435,                          # Ollama
-    135, 139, 445, 1080,                   # Windows system
+    5174, 5173, 5175, 3000, 8080, 8443,       # dev servers / Vite HMR
+    11434, 11435,                              # Ollama
+    135, 139, 445, 1080,                       # Windows system / SMB / NetBIOS
+    5040,                                      # Windows UWP / DPS
+    5357, 5358,                                # WSD (Web Services on Devices)
+    2179,                                      # Hyper-V remote desktop
+    7680,                                      # Windows Update Delivery Optimization
+    49664, 49665, 49666, 49667, 49668, 49669,  # Windows ephemeral RPC
 }
 LOCAL_NETS = ("127.", "::1", "0.0.0.0", "[::]", "192.168.", "10.", "172.16.", "172.17.", "172.18.")
-SAFE_FOREIGN_PORTS = {80, 443, 5174, 11434, 8080, 8443}
+SAFE_FOREIGN_PORTS = {80, 443, 5174, 11434, 8080, 8443, 5228, 5229}  # 5228/5229 = Google push
 
 SUSPICIOUS_PROCS = [
     "xmrig", "xmr-stak", "miner", "coinhive",
