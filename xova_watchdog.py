@@ -46,6 +46,7 @@ JARVIS_DIR           = r"C:\jarvis"
 MESH_SCRIPT          = r"C:\Xova\mesh_runner.py"
 FORGE_SCRIPT         = r"C:\Xova\forge_listener.py"
 ABSORB_SCRIPT        = r"C:\Xova\absorb_loop.py"
+SENTINEL_SCRIPT      = r"C:\Xova\coherence_sentinel.py"
 XOVA_DIR             = r"C:\Xova"
 LOG_PATH             = r"C:\Xova\memory\watchdog.log"
 NO_WIN               = 0x08000000   # CREATE_NO_WINDOW
@@ -356,6 +357,20 @@ def _start_absorb() -> None:
         _log(f"start absorb_loop failed: {exc}")
 
 
+def _start_sentinel() -> None:
+    try:
+        proc = subprocess.Popen(
+            [MESH_PYTHONW, SENTINEL_SCRIPT],
+            cwd=XOVA_DIR,
+            creationflags=NO_WIN,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        _log(f"started coherence_sentinel PID {proc.pid}")
+    except Exception as exc:
+        _log(f"start coherence_sentinel failed: {exc}")
+
+
 def main() -> None:
     _log("watchdog started")
     prev_xova = _xova_alive()
@@ -389,6 +404,11 @@ def main() -> None:
                 _log("absorb_loop not found — starting")
                 _start_absorb()
 
+            sentinel_pids = _find("coherence_sentinel.py")
+            if not sentinel_pids:
+                _log("coherence_sentinel not found — starting")
+                _start_sentinel()
+
         else:
             # Xova has exited — write heartbeat, shut everything down.
             _write_xova_heartbeat(False)
@@ -415,6 +435,11 @@ def main() -> None:
             if absorb_pids:
                 _log(f"killing absorb_loop pids {absorb_pids}")
                 _kill_if_old_enough(absorb_pids, "absorb_loop")     # AUDIT-2-020
+
+            sentinel_pids = _find("coherence_sentinel.py")
+            if sentinel_pids:
+                _log(f"killing coherence_sentinel pids {sentinel_pids}")
+                _kill_if_old_enough(sentinel_pids, "coherence_sentinel")
 
             if not prev_xova:
                 # Xova still dead — nothing to do, sleep and check again.

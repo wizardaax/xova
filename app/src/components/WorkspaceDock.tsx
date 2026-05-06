@@ -5,9 +5,11 @@ import { FeedTile } from "./FeedTile";
 import { PhonePicker } from "./PhonePicker";
 import { MemoryPanel } from "./MemoryPanel";
 import { NavigatorTile } from "./NavigatorTile";
+import { CorpusSearch } from "./CorpusSearch";
+import { AgentGraph } from "./AgentGraph";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",    label: "Camera",    emoji: "📷" },
@@ -15,6 +17,8 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "phones",    label: "Phones",    emoji: "📱" },
   { id: "memory",    label: "Memory",    emoji: "🧠" },
   { id: "navigator", label: "Navigator", emoji: "🦢" },
+  { id: "search",    label: "Search",    emoji: "🔍" },
+  { id: "agents",    label: "Agents",    emoji: "🕸" },
 ];
 
 interface WorkspaceDockProps {
@@ -83,6 +87,8 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "phones" && <PhonePicker onClose={() => onTab(null)} />}
             {activeTab === "memory" && <MemoryPanel onClose={() => onTab(null)} />}
             {activeTab === "navigator" && <NavigatorTile onClose={() => onTab(null)} />}
+            {activeTab === "search"    && <CorpusSearch  onClose={() => onTab(null)} />}
+            {activeTab === "agents"    && <AgentGraph    onClose={() => onTab(null)} />}
           </div>
         </div>
       )}

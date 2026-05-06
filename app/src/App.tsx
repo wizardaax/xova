@@ -9,6 +9,7 @@ import { MeshFeed } from "@/components/MeshFeed";
 import { WorkspaceDock } from "@/components/WorkspaceDock";
 import { CommandPalette, type PaletteItem } from "@/components/CommandPalette";
 import { ControlPanel } from "@/components/ControlPanel";
+import { QuickCapture } from "@/components/QuickCapture";
 import { SquaresFour } from "@phosphor-icons/react";
 import { useMesh } from "@/hooks/use-mesh";
 import { TASK_TYPES, type TaskType, saveMemory, loadMemory, ollamaChat, ollamaChatStream, dispatchMesh, cascadeMesh, loadOllamaSettings, saveOllamaSettings, type OllamaSettings, DEFAULT_SETTINGS, loadMeshFlags, saveMeshFlags, type MeshFlags, DEFAULT_MESH_FLAGS } from "@/lib/mesh";
@@ -300,6 +301,9 @@ function App() {
       if (e.key === "Escape") { setPanelOpen(false); setPaletteOpen(false); return; }
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "c") {
         e.preventDefault(); setPanelOpen((v) => !v); return;
+      }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "n") {
+        e.preventDefault(); setNotesOpen((v) => !v); return;
       }
       if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "/")) {
         e.preventDefault(); setPaletteOpen(true); return;
@@ -625,6 +629,8 @@ function App() {
   const [activity, setActivity] = useState<string[]>([]);
   const [hydrated, setHydrated] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  const [exportToast, setExportToast] = useState("");
+  const [notesOpen, setNotesOpen] = useState(false);
   const saveTimer = useRef<number | null>(null);
   const cancelledRef = useRef(false);
   const lastConsolidatedAtRef = useRef(0);
@@ -634,6 +640,22 @@ function App() {
     cancelledRef.current = true;
     pushActivity("stop requested");
   }, [pushActivity]);
+
+  const exportChat = useCallback(async () => {
+    try {
+      const header = `# Xova Session — ${new Date().toLocaleString()}\n\n`;
+      const body = messages.map((m) => {
+        const speaker = m.role === "user" ? "**User**" : m.role === "absorb" ? "**Absorb**" : "**Xova**";
+        const ts = new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        return `${speaker} · ${ts}\n${(m as Record<string, unknown>).text ?? (m as Record<string, unknown>).content ?? ""}\n`;
+      }).join("\n");
+      const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const path = `C:\\Xova\\memory\\export_${stamp}.md`;
+      await invoke("xova_write_file", { path, content: header + body });
+      setExportToast(`Exported → export_${stamp}.md`);
+      setTimeout(() => setExportToast(""), 3000);
+    } catch { setExportToast("Export failed"); setTimeout(() => setExportToast(""), 3000); }
+  }, [messages]);
 
   // Hydrate from disk on mount
   useEffect(() => {
@@ -4300,6 +4322,20 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
             </span>
           </div>
           <button
+            onClick={exportChat}
+            className="w-7 h-7 flex items-center justify-center rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors font-mono text-[10px]"
+            title="Export chat to Markdown"
+          >
+            MD
+          </button>
+          <button
+            onClick={() => setNotesOpen((v) => !v)}
+            className="w-7 h-7 flex items-center justify-center rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
+            title="Quick notes (Ctrl+Shift+N)"
+          >
+            📝
+          </button>
+          <button
             onClick={() => setPanelOpen(true)}
             className="w-7 h-7 flex items-center justify-center rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
             title="Control panel"
@@ -4818,6 +4854,12 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
               </div>
             </div>
           </div>
+        </div>
+      )}
+      <QuickCapture open={notesOpen} onClose={() => setNotesOpen(false)} />
+      {exportToast && (
+        <div className="fixed bottom-4 right-4 bg-zinc-800 text-zinc-200 px-4 py-2 rounded-lg text-sm font-mono shadow-lg z-50">
+          {exportToast}
         </div>
       )}
     </div>
