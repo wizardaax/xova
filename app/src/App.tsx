@@ -11,6 +11,7 @@ import { CommandPalette, type PaletteItem } from "@/components/CommandPalette";
 import { ControlPanel } from "@/components/ControlPanel";
 import { QuickCapture } from "@/components/QuickCapture";
 import { SearchOverlay } from "@/components/SearchOverlay";
+import { CameraMonitor } from "@/components/CameraMonitor";
 import { SquaresFour } from "@phosphor-icons/react";
 import { useMesh } from "@/hooks/use-mesh";
 import { TASK_TYPES, type TaskType, saveMemory, loadMemory, ollamaChat, ollamaChatStream, dispatchMesh, cascadeMesh, loadOllamaSettings, saveOllamaSettings, type OllamaSettings, DEFAULT_SETTINGS, loadMeshFlags, saveMeshFlags, type MeshFlags, DEFAULT_MESH_FLAGS } from "@/lib/mesh";
@@ -633,6 +634,7 @@ function App() {
   const [exportToast, setExportToast] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [cameraMonitor, setCameraMonitor] = useState(false);
   const saveTimer = useRef<number | null>(null);
   const cancelledRef = useRef(false);
   const lastConsolidatedAtRef = useRef(0);
@@ -4338,6 +4340,13 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
             📝
           </button>
           <button
+            onClick={() => setCameraMonitor((v) => !v)}
+            className={`w-7 h-7 flex items-center justify-center rounded transition-colors ${cameraMonitor ? "text-emerald-300 bg-emerald-900/30 border border-emerald-700" : "text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800"}`}
+            title={cameraMonitor ? "Hide camera monitor" : "Show camera monitor"}
+          >
+            📷
+          </button>
+          <button
             onClick={() => setPanelOpen(true)}
             className="w-7 h-7 flex items-center justify-center rounded text-zinc-400 hover:text-zinc-100 hover:bg-zinc-800 transition-colors"
             title="Control panel"
@@ -4349,6 +4358,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       <StatusBar isBusy={isBusy} jarvisSpoke={jarvisSpoke} phase={phase} forgeMode={meshFlags.forge_mode}
         currentModel={ollamaSettings.model} messageCount={messages.length}
         onModelChange={(m) => setOllamaSettings(prev => ({ ...prev, model: m }))} />
+      {cameraMonitor && <CameraMonitor onClose={() => setCameraMonitor(false)} />}
       {dragOver && (
         <div className="absolute inset-0 z-50 bg-emerald-900/30 border-4 border-dashed border-emerald-500 flex items-center justify-center pointer-events-none">
           <div className="text-2xl font-mono text-emerald-300">drop file to upload</div>

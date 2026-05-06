@@ -26,37 +26,65 @@ import { ShellHistory } from "./ShellHistory";
 import { CorpusStats } from "./CorpusStats";
 import { CoherenceTimeline } from "./CoherenceTimeline";
 import { AgentHeatmap } from "./AgentHeatmap";
+import { VoiceMemos } from "./VoiceMemos";
+import { AbsorbLog } from "./AbsorbLog";
+import { ExportsViewer } from "./ExportsViewer";
+import { MeshControl } from "./MeshControl";
+import { SwarmPanel } from "./SwarmPanel";
+import { AeonThrust } from "./AeonThrust";
+import { FieldVisualizer } from "./FieldVisualizer";
+import { ChatLogBrowser } from "./ChatLogBrowser";
+import { CalibrationChart } from "./CalibrationChart";
+import { CyclesBrowser } from "./CyclesBrowser";
+import { SmsArchive } from "./SmsArchive";
+import { PhaseHistory } from "./PhaseHistory";
+import { MemoryKeys } from "./MemoryKeys";
+import { FederationPanel } from "./FederationPanel";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
-  { id: "camera",    label: "Camera",    emoji: "📷" },
-  { id: "feed",      label: "Feed",      emoji: "📡" },
-  { id: "phones",    label: "Phones",    emoji: "📱" },
-  { id: "memory",    label: "Memory",    emoji: "🧠" },
-  { id: "navigator", label: "Navigator", emoji: "🦢" },
-  { id: "search",    label: "Search",    emoji: "🔍" },
-  { id: "agents",    label: "Agents",    emoji: "🕸" },
-  { id: "repos",     label: "Repos",     emoji: "📦" },
-  { id: "metrics",   label: "Metrics",   emoji: "📊" },
-  { id: "events",    label: "Events",    emoji: "⚡" },
-  { id: "daemons",   label: "Daemons",   emoji: "⚙️" },
-  { id: "dispatch",  label: "Dispatch",  emoji: "🎯" },
-  { id: "ablation",  label: "Ablation",  emoji: "🔬" },
-  { id: "evolution", label: "Evolution", emoji: "🧬" },
-  { id: "sessions",  label: "Sessions",  emoji: "📚" },
-  { id: "editor",    label: "Editor",    emoji: "✏️" },
-  { id: "repl",      label: "REPL",      emoji: "🐍" },
-  { id: "selfeval",  label: "Self-Eval",  emoji: "📈" },
-  { id: "notes",     label: "Notes",      emoji: "📓" },
-  { id: "ternary",   label: "Ternary",    emoji: "⚖️" },
-  { id: "flags",     label: "Flags",      emoji: "🚩" },
-  { id: "sce88",     label: "SCE-88",     emoji: "🧩" },
-  { id: "shell",     label: "Shell",      emoji: "🖥️" },
-  { id: "corpus",    label: "Corpus",     emoji: "📂" },
-  { id: "coherence", label: "Coherence",  emoji: "📉" },
-  { id: "heatmap",   label: "Heatmap",    emoji: "🟩" },
+  { id: "camera",      label: "Camera",      emoji: "📷" },
+  { id: "feed",        label: "Feed",        emoji: "📡" },
+  { id: "phones",      label: "Phones",      emoji: "📱" },
+  { id: "memory",      label: "Memory",      emoji: "🧠" },
+  { id: "navigator",   label: "Navigator",   emoji: "🦢" },
+  { id: "search",      label: "Search",      emoji: "🔍" },
+  { id: "agents",      label: "Agents",      emoji: "🕸" },
+  { id: "repos",       label: "Repos",       emoji: "📦" },
+  { id: "metrics",     label: "Metrics",     emoji: "📊" },
+  { id: "events",      label: "Events",      emoji: "⚡" },
+  { id: "daemons",     label: "Daemons",     emoji: "⚙️" },
+  { id: "dispatch",    label: "Dispatch",    emoji: "🎯" },
+  { id: "ablation",    label: "Ablation",    emoji: "🔬" },
+  { id: "evolution",   label: "Evolution",   emoji: "🧬" },
+  { id: "sessions",    label: "Sessions",    emoji: "📚" },
+  { id: "editor",      label: "Editor",      emoji: "✏️" },
+  { id: "repl",        label: "REPL",        emoji: "🐍" },
+  { id: "selfeval",    label: "Self-Eval",   emoji: "📈" },
+  { id: "notes",       label: "Notes",       emoji: "📓" },
+  { id: "ternary",     label: "Ternary",     emoji: "⚖️" },
+  { id: "flags",       label: "Flags",       emoji: "🚩" },
+  { id: "sce88",       label: "SCE-88",      emoji: "🧩" },
+  { id: "shell",       label: "Shell",       emoji: "🖥️" },
+  { id: "corpus",      label: "Corpus",      emoji: "📂" },
+  { id: "coherence",   label: "Coherence",   emoji: "📉" },
+  { id: "heatmap",     label: "Heatmap",     emoji: "🟩" },
+  { id: "voicememos",  label: "Voice Memos", emoji: "🎙️" },
+  { id: "absorb",      label: "Absorb",      emoji: "🧪" },
+  { id: "exports",     label: "Exports",     emoji: "📤" },
+  { id: "meshctl",     label: "Mesh Ctrl",   emoji: "🎮" },
+  { id: "swarm",       label: "Swarm",       emoji: "🔀" },
+  { id: "aeon",        label: "AEON",        emoji: "⚡" },
+  { id: "field",       label: "Field",       emoji: "🌀" },
+  { id: "chatlog",     label: "Chat Log",    emoji: "💬" },
+  { id: "calibration", label: "Calibration", emoji: "🎛️" },
+  { id: "cycles",      label: "Cycles",      emoji: "🔁" },
+  { id: "smsarchive",  label: "SMS",         emoji: "💬" },
+  { id: "phasehistory",label: "Phases",      emoji: "🌊" },
+  { id: "memkeys",     label: "Mem Keys",    emoji: "🗝️" },
+  { id: "federation",  label: "Federation",  emoji: "🌐" },
 ];
 
 interface WorkspaceDockProps {
@@ -70,7 +98,7 @@ interface WorkspaceDockProps {
  * active tab again (or the X) to collapse the dock back to just the rail.
  */
 export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
-  const [cameraOn, setCameraOn] = useState(true); // owned by tab visibility now
+  const [cameraOn, setCameraOn] = useState(true);
 
   const collapsed = activeTab === null;
 
@@ -80,7 +108,7 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
       collapsed ? "w-10" : "w-[420px]"
     )}>
       {/* Rail with tab buttons */}
-      <div className="w-10 border-r border-zinc-900 flex flex-col items-center py-2 gap-1 shrink-0">
+      <div className="w-10 border-r border-zinc-900 flex flex-col items-center py-2 gap-1 shrink-0 overflow-y-auto">
         {TABS.map((t) => {
           const isActive = activeTab === t.id;
           return (
@@ -89,7 +117,7 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
               onClick={() => onTab(isActive ? null : t.id)}
               title={t.label}
               className={cn(
-                "w-8 h-8 rounded text-[13px] flex items-center justify-center border transition-colors",
+                "w-8 h-8 rounded text-[13px] flex items-center justify-center border transition-colors shrink-0",
                 isActive
                   ? "bg-emerald-900/40 border-emerald-600 text-emerald-300"
                   : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-emerald-600 hover:text-emerald-400"
@@ -102,7 +130,7 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
         <button
           onClick={() => onTab(collapsed ? "camera" : null)}
           title={collapsed ? "Expand" : "Collapse"}
-          className="w-8 h-8 mt-auto rounded border border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-emerald-400 hover:border-emerald-600 flex items-center justify-center"
+          className="w-8 h-8 mt-auto rounded border border-zinc-800 bg-zinc-900 text-zinc-500 hover:text-emerald-400 hover:border-emerald-600 flex items-center justify-center shrink-0"
         >
           {collapsed ? <CaretLeft size={12} /> : <CaretRight size={12} />}
         </button>
@@ -120,32 +148,46 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             </button>
           </div>
           <div className="flex-1 overflow-y-auto p-2">
-            {activeTab === "camera" && <CameraTile active={cameraOn} onToggle={() => setCameraOn(v => !v)} />}
-            {activeTab === "feed"   && <FeedTile onClose={() => onTab(null)} />}
-            {activeTab === "phones" && <PhonePicker onClose={() => onTab(null)} />}
-            {activeTab === "memory" && <MemoryPanel onClose={() => onTab(null)} />}
-            {activeTab === "navigator" && <NavigatorTile onClose={() => onTab(null)} />}
-            {activeTab === "search"    && <CorpusSearch  onClose={() => onTab(null)} />}
-            {activeTab === "agents"    && <AgentGraph    onClose={() => onTab(null)} />}
-            {activeTab === "repos"     && <RepoHealth    onClose={() => onTab(null)} />}
-            {activeTab === "metrics"   && <RffMetrics      onClose={() => onTab(null)} />}
-            {activeTab === "events"    && <EventsLog      onClose={() => onTab(null)} />}
-            {activeTab === "daemons"   && <DaemonDashboard onClose={() => onTab(null)} />}
-            {activeTab === "dispatch"  && <AgentDispatch  onClose={() => onTab(null)} />}
-            {activeTab === "ablation"  && <AblationMetrics    onClose={() => onTab(null)} />}
-            {activeTab === "evolution" && <EvolutionTracker  onClose={() => onTab(null)} />}
-            {activeTab === "sessions"  && <SessionBrowser    onClose={() => onTab(null)} />}
-            {activeTab === "editor"    && <PluginEditor      onClose={() => onTab(null)} />}
-            {activeTab === "repl"      && <PythonRepl        onClose={() => onTab(null)} />}
-            {activeTab === "selfeval"  && <SelfEvalChart     onClose={() => onTab(null)} />}
-            {activeTab === "notes"     && <NotesBrowser     onClose={() => onTab(null)} />}
-            {activeTab === "ternary"   && <TernaryExplorer  onClose={() => onTab(null)} />}
-            {activeTab === "flags"     && <MeshFlagsEditor  onClose={() => onTab(null)} />}
-            {activeTab === "sce88"     && <Sce88Audit       onClose={() => onTab(null)} />}
-            {activeTab === "shell"     && <ShellHistory     onClose={() => onTab(null)} />}
-            {activeTab === "corpus"    && <CorpusStats      onClose={() => onTab(null)} />}
-            {activeTab === "coherence" && <CoherenceTimeline onClose={() => onTab(null)} />}
-            {activeTab === "heatmap"   && <AgentHeatmap     onClose={() => onTab(null)} />}
+            {activeTab === "camera"      && <CameraTile active={cameraOn} onToggle={() => setCameraOn(v => !v)} />}
+            {activeTab === "feed"        && <FeedTile onClose={() => onTab(null)} />}
+            {activeTab === "phones"      && <PhonePicker onClose={() => onTab(null)} />}
+            {activeTab === "memory"      && <MemoryPanel onClose={() => onTab(null)} />}
+            {activeTab === "navigator"   && <NavigatorTile onClose={() => onTab(null)} />}
+            {activeTab === "search"      && <CorpusSearch  onClose={() => onTab(null)} />}
+            {activeTab === "agents"      && <AgentGraph    onClose={() => onTab(null)} />}
+            {activeTab === "repos"       && <RepoHealth    onClose={() => onTab(null)} />}
+            {activeTab === "metrics"     && <RffMetrics      onClose={() => onTab(null)} />}
+            {activeTab === "events"      && <EventsLog      onClose={() => onTab(null)} />}
+            {activeTab === "daemons"     && <DaemonDashboard onClose={() => onTab(null)} />}
+            {activeTab === "dispatch"    && <AgentDispatch  onClose={() => onTab(null)} />}
+            {activeTab === "ablation"    && <AblationMetrics    onClose={() => onTab(null)} />}
+            {activeTab === "evolution"   && <EvolutionTracker  onClose={() => onTab(null)} />}
+            {activeTab === "sessions"    && <SessionBrowser    onClose={() => onTab(null)} />}
+            {activeTab === "editor"      && <PluginEditor      onClose={() => onTab(null)} />}
+            {activeTab === "repl"        && <PythonRepl        onClose={() => onTab(null)} />}
+            {activeTab === "selfeval"    && <SelfEvalChart     onClose={() => onTab(null)} />}
+            {activeTab === "notes"       && <NotesBrowser     onClose={() => onTab(null)} />}
+            {activeTab === "ternary"     && <TernaryExplorer  onClose={() => onTab(null)} />}
+            {activeTab === "flags"       && <MeshFlagsEditor  onClose={() => onTab(null)} />}
+            {activeTab === "sce88"       && <Sce88Audit       onClose={() => onTab(null)} />}
+            {activeTab === "shell"       && <ShellHistory     onClose={() => onTab(null)} />}
+            {activeTab === "corpus"      && <CorpusStats      onClose={() => onTab(null)} />}
+            {activeTab === "coherence"   && <CoherenceTimeline onClose={() => onTab(null)} />}
+            {activeTab === "heatmap"     && <AgentHeatmap     onClose={() => onTab(null)} />}
+            {activeTab === "voicememos"  && <VoiceMemos       onClose={() => onTab(null)} />}
+            {activeTab === "absorb"      && <AbsorbLog        onClose={() => onTab(null)} />}
+            {activeTab === "exports"     && <ExportsViewer    onClose={() => onTab(null)} />}
+            {activeTab === "meshctl"     && <MeshControl      onClose={() => onTab(null)} />}
+            {activeTab === "swarm"       && <SwarmPanel       onClose={() => onTab(null)} />}
+            {activeTab === "aeon"        && <AeonThrust       onClose={() => onTab(null)} />}
+            {activeTab === "field"       && <FieldVisualizer  onClose={() => onTab(null)} />}
+            {activeTab === "chatlog"     && <ChatLogBrowser   onClose={() => onTab(null)} />}
+            {activeTab === "calibration" && <CalibrationChart onClose={() => onTab(null)} />}
+            {activeTab === "cycles"      && <CyclesBrowser    onClose={() => onTab(null)} />}
+            {activeTab === "smsarchive"  && <SmsArchive       onClose={() => onTab(null)} />}
+            {activeTab === "phasehistory"&& <PhaseHistory     onClose={() => onTab(null)} />}
+            {activeTab === "memkeys"     && <MemoryKeys       onClose={() => onTab(null)} />}
+            {activeTab === "federation"  && <FederationPanel  onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
