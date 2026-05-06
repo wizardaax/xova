@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { SecuritySentinel } from "./SecuritySentinel";
 import { BrowserControl } from "./BrowserControl";
+import { MemoryGraph } from "./MemoryGraph";
 import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import { CameraTile } from "./CameraTile";
 import { FeedTile } from "./FeedTile";
@@ -56,7 +57,7 @@ import { EvolutionStages } from "./EvolutionStages";
 import { DriveMatrix } from "./DriveMatrix";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -113,6 +114,7 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "drivematrix",  label: "Drive Matrix", emoji: "🔢" },
   { id: "security",     label: "Security",     emoji: "🛡️" },
   { id: "browser",      label: "Browser AI",   emoji: "🌐" },
+  { id: "memgraph",     label: "Mem Graph",    emoji: "🕸" },
 ];
 
 interface WorkspaceDockProps {
@@ -232,6 +234,7 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "drivematrix" && <DriveMatrix      onClose={() => onTab(null)} />}
             {activeTab === "security"    && <SecuritySentinel onClose={() => onTab(null)} wideDock={wideDock} onToggleWide={() => setWideDock(v => !v)} />}
             {activeTab === "browser"     && <BrowserControl   onClose={() => onTab(null)} />}
+            {activeTab === "memgraph"    && <MemoryGraph      onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
