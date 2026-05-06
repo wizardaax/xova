@@ -171,13 +171,23 @@ export async function ollamaChatStream(
     if (event.payload.request_id === requestId) onToken(event.payload.token);
   });
 
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
-    const raw = await invokeWithTimeout<string>("ollama_chat_stream", {
-      requestId,
-      messages: JSON.stringify(messages),
-      model: s.model,
-      numCtx: s.numCtx,
-    }, 180000);
+    const raw = await Promise.race([
+      invoke<string>("ollama_chat_stream", {
+        requestId,
+        messages: JSON.stringify(messages),
+        model: s.model,
+        numCtx: s.numCtx,
+      }),
+      new Promise<string>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          invoke("cancel_ollama_stream", { requestId }).catch(() => {});
+          reject(new Error("timeout after 180s — model is stuck or overloaded"));
+        }, 180000);
+      }),
+    ]);
+    if (timeoutId !== null) clearTimeout(timeoutId);
     return JSON.parse(raw);
   } finally {
     tokenUnlisten();

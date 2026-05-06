@@ -58,6 +58,7 @@ interface ChatFeedProps {
   onDelete?: (id: string) => void;
   onEdit?: (text: string) => void;
   onSuggest?: (prompt: string) => void;
+  onReply?: (text: string) => void;
 }
 
 const STARTER_PROMPTS = [
@@ -69,7 +70,7 @@ const STARTER_PROMPTS = [
   "jarvis, what time is it?",
 ];
 
-export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, onSuggest }: ChatFeedProps) {
+export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, onSuggest, onReply }: ChatFeedProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [stuckToBottom, setStuckToBottom] = useState(true);
   // Track whether the user has scrolled up. If so, don't yank them back to the
@@ -185,7 +186,9 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
             const isUser = m.role === "user";
             const isVoiceUser = m.id.startsWith("voice-user-");
             const isVoice = m.id.startsWith("voice-") && !isVoiceUser;
-            const speaker = isVoiceUser ? "🎙 you" : isUser ? "you" : isVoice ? "🎙 jarvis" : "xova";
+            const isForgeReply = m.id.startsWith("forge-reply-");
+            const isAbsorbFinding = m.id.startsWith("absorb-finding-");
+            const speaker = isVoiceUser ? "🎙 you" : isUser ? "you" : isVoice ? "🎙 jarvis" : isForgeReply ? "🔨 forge" : isAbsorbFinding ? "🧠 noticed" : "xova";
             const showDay = idx === 0 || dayKey(messages[idx - 1].ts) !== dayKey(m.ts);
             return (
               <div key={m.id} className="flex flex-col">
@@ -224,6 +227,20 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
                       title="copy text"
                       className="hover:text-emerald-400"
                     >⧉</button>
+                    <button
+                      onClick={() => {
+                        const raw = m.text.replace(/\n+/g, " ").trim();
+                        const snippet = raw.length > 60 ? raw.slice(0, 60).trimEnd() + "…" : raw;
+                        const prefill = `↩ ${snippet}: `;
+                        if (onReply) {
+                          onReply(prefill);
+                        } else {
+                          window.dispatchEvent(new CustomEvent("xova-prefill", { detail: { text: prefill } }));
+                        }
+                      }}
+                      title="reply to this message"
+                      className="hover:text-sky-400"
+                    >↩</button>
                     {onDelete && (
                       <button
                         onClick={() => onDelete(m.id)}
@@ -237,9 +254,11 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
                   "leading-relaxed px-1 max-w-[90%]",
                   isUser ? "text-zinc-300 text-right whitespace-pre-wrap" :
                   isVoice ? "text-emerald-300 whitespace-pre-wrap" :
+                  isForgeReply ? "text-amber-200 whitespace-pre-wrap" :
+                  isAbsorbFinding ? "text-violet-300 whitespace-pre-wrap" :
                   "text-zinc-100 prose prose-invert prose-sm max-w-none prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800 prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-a:text-emerald-400"
                 )}>
-                  {isUser ? m.text : isVoice ? m.text : (
+                  {isUser ? m.text : isVoice ? m.text : isForgeReply ? m.text : isAbsorbFinding ? m.text : (
                     /^(thinking\.\.\.?|📋\s*summarizing.*)$/i.test(m.text.trim()) ? (
                       <span className="typing-dots text-emerald-400 inline-flex items-center gap-1">
                         <span className="text-zinc-500 mr-1 text-xs">{m.text.trim().startsWith("📋") ? "summarising" : "thinking"}</span>

@@ -125,8 +125,8 @@ export function StatusBar({ isBusy, jarvisSpoke, phase }: StatusBarProps) {
       </span>
       <span className="text-zinc-800">·</span>
       <span className="flex items-center gap-1.5" title={jarvisAlive ? (jarvisSpoke ? "Jarvis spoke recently" : "Jarvis online") : "Jarvis offline"}>
-        <JarvisSilhouette active={jarvisAlive} listening={jarvisSpoke} />
-        <span className={`uppercase tracking-wider font-semibold ${jarvisAlive ? "text-amber-400" : "text-zinc-700"}`}>JARVIS</span>
+        <JarvisSilhouette active={true} listening={jarvisSpoke} />
+        <span className="uppercase tracking-wider font-semibold text-amber-400">JARVIS</span>
       </span>
       <span className="text-zinc-800">·</span>
       <span className="flex items-center gap-1.5">

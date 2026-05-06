@@ -11,7 +11,7 @@ type Tab = "camera" | "feed" | "phones" | "memory" | "navigator";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",    label: "Camera",    emoji: "📷" },
-  { id: "feed",      label: "Feed",      emoji: "🔒" },
+  { id: "feed",      label: "Feed",      emoji: "📡" },
   { id: "phones",    label: "Phones",    emoji: "📱" },
   { id: "memory",    label: "Memory",    emoji: "🧠" },
   { id: "navigator", label: "Navigator", emoji: "🦢" },
@@ -21,6 +21,7 @@ interface WorkspaceDockProps {
   activeTab: Tab | null;
   onTab: (t: Tab | null) => void;
 }
+
 
 /**
  * Right-side dock. Pick a tab to show one workspace at a time. Click the

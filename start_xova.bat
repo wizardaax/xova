@@ -16,9 +16,9 @@ echo.
 
 cd /d "%~dp0app"
 
-:: 1. Start Vite dev server in a minimised window
+:: 1. Start Vite dev server silently (no taskbar window, output logged)
 echo [1/3] Starting Vite dev server on http://localhost:5174 ...
-start "Xova Vite" /MIN cmd /c "npm run dev"
+start "" /B cmd /c "npm run dev >> C:\Xova\memory\vite.log 2>&1"
 
 :: 2. Wait until Vite is responding (max ~30s)
 echo [2/3] Waiting for Vite to respond ...
@@ -29,7 +29,7 @@ curl -s -o nul http://localhost:5174/ 2>nul
 if %errorlevel% equ 0 goto viteup
 set /a tries+=1
 if %tries% lss 30 goto waitloop
-echo   ! Vite didn't come up after 30s. Check the "Xova Vite" window for errors.
+echo   ! Vite didn't come up after 30s. Check C:\Xova\memory\vite.log for errors.
 goto :eof
 :viteup
 echo   Vite is up.

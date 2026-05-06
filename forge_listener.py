@@ -211,6 +211,14 @@ def _enqueue(msg: dict) -> None:
         _log(f"enqueue failed: {exc}")
 
 
+def _strip_role_prefix(text: str) -> str:
+    """AUDIT-2-025: strip leading 'Forge: ' / 'Jarvis: ' speaker labels from LLM
+    responses. The 3B model sometimes prefixes its own reply with a speaker name.
+    Case-insensitive; strips the label and any trailing whitespace before the body."""
+    import re
+    return re.sub(r'(?i)^\s*(?:forge|jarvis)\s*:\s*', '', text).strip()
+
+
 def _call_claude(text: str) -> str:
     """Invoke claude --print via stdin. Returns response text.
     Uses absolute path to claude.exe so pythonw's minimal PATH is not a problem.
@@ -261,9 +269,9 @@ def _deliver_reply(text: str, from_agent: str, correlation_id: str | None, origi
     _append_outbox(FORGE_OUTBOX, payload)
 
     if from_agent == "jarvis":
-        # Route back into Jarvis inbox so XovaInboxListener picks it up
-        _write_json(JARVIS_INBOX, payload)
-        _log(f"routed forge->jarvis: '{text[:60]}'")
+        # Reply already in forge_outbox; ask_forge.py drains it by correlation_id.
+        # Do NOT write to JARVIS_INBOX — XovaInboxListener would loop it back.
+        _log(f"routed forge->jarvis via outbox: '{text[:60]}'")
     else:
         # Route to Xova via voice_inbox with role="forge"
         voice_payload = {**payload, "role": "forge"}
@@ -310,7 +318,7 @@ def _route_inbox(mode: str) -> None:
         return
 
     _log(f"calling claude --print (calls this hour: {_rate_used() + 1}/{RATE_LIMIT})")
-    reply_text = _call_claude(text)
+    reply_text = _strip_role_prefix(_call_claude(text))  # AUDIT-2-025
     _record_call()
     _log(f"claude replied: '{reply_text[:80]}'")
     _deliver_reply(reply_text, from_agent, correlation_id, ts)
@@ -418,7 +426,7 @@ def _drain_startup_queue() -> None:
         correlation_id: str | None = item.get("correlation_id") or None
         original_ts = int(item.get("ts", 0))
         _log(f"startup drain: calling claude for from={from_agent} text='{text[:60]}'")
-        reply = _call_claude(text)
+        reply = _strip_role_prefix(_call_claude(text))  # AUDIT-2-025
         _record_call()
         _log(f"startup drain: reply='{reply[:80]}'")
         _deliver_reply(reply, from_agent, correlation_id, original_ts)

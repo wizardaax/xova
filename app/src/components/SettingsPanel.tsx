@@ -4,6 +4,10 @@ import {
   saveOllamaSettings,
   DEFAULT_SETTINGS,
   type OllamaSettings,
+  loadMeshFlags,
+  saveMeshFlags,
+  DEFAULT_MESH_FLAGS,
+  type MeshFlags,
 } from "@/lib/mesh";
 
 const INSTALLED_MODELS = [
@@ -20,12 +24,14 @@ export function SettingsPanel() {
   const [settings, setSettings] = useState<OllamaSettings>(DEFAULT_SETTINGS);
   const [hydrated, setHydrated] = useState(false);
   const [savedAt, setSavedAt] = useState<number | null>(null);
+  const [meshFlags, setMeshFlags] = useState<MeshFlags>(DEFAULT_MESH_FLAGS);
 
   useEffect(() => {
     loadOllamaSettings().then((s) => {
       setSettings(s);
       setHydrated(true);
     });
+    loadMeshFlags().then(setMeshFlags).catch(() => {});
   }, []);
 
   const onModel = async (model: string) => {
@@ -88,6 +94,34 @@ export function SettingsPanel() {
         {savedAt && (
           <p className="text-[10px] text-emerald-500 font-mono">saved · {new Date(savedAt).toLocaleTimeString()}</p>
         )}
+
+        <div className="pt-4 border-t border-zinc-800">
+          <p className="text-[11px] text-zinc-400 font-mono uppercase tracking-wider mb-2">Cognitive Fleet</p>
+          {(
+            [
+              { key: "meshRunnerEnabled",  label: "Mesh Runner",       desc: "13-agent cycle every 60s" },
+              { key: "cognitiveEnabled",   label: "Cognitive Cycle",   desc: "agent dispatch + coherence scoring" },
+              { key: "evolutionEnabled",   label: "Evolution Engine",  desc: "self-improve every 5 cycles" },
+            ] as { key: keyof MeshFlags; label: string; desc: string }[]
+          ).map(({ key, label, desc }) => (
+            <label key={key} className="flex items-start gap-2 mb-2 cursor-pointer group">
+              <input
+                type="checkbox"
+                checked={meshFlags[key]}
+                onChange={async (e) => {
+                  const next = { ...meshFlags, [key]: e.target.checked };
+                  setMeshFlags(next);
+                  try { await saveMeshFlags(next); } catch {}
+                }}
+                className="mt-0.5 accent-emerald-500"
+              />
+              <span>
+                <span className="text-zinc-200 text-xs font-mono">{label}</span>
+                <span className="block text-[10px] text-zinc-500">{desc}</span>
+              </span>
+            </label>
+          ))}
+        </div>
       </div>
     </div>
   );
