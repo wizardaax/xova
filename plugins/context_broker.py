@@ -15,6 +15,77 @@ import argparse, json, os, sys, time
 
 STORE_PATH = r"C:\Xova\memory\context_broker.json"
 
+# ── SCE-88 write guard ────────────────────────────────────────────────────────
+# Loaded once at import; falls back to stdlib mirror if Snell-Vern unavailable.
+_sv_validate_coherence      = None
+_sv_validate_uncertainty    = None
+_sv_validate_ternary        = None
+_sv_ConstraintViolation     = Exception
+
+try:
+    import sys as _sys
+    _sys.path.insert(0, r"D:\github\wizardaax\Snell-Vern-Hybrid-Drive-Matrix\src")
+    from snell_vern_matrix.self_model import (      # type: ignore[import]
+        _validate_coherence      as _sv_validate_coherence,
+        _validate_uncertainty    as _sv_validate_uncertainty,
+        _validate_ternary_balance as _sv_validate_ternary,
+        ConstraintViolation      as _sv_ConstraintViolation,
+    )
+except Exception:
+    pass
+
+
+def _sce88_check_value(value: object) -> list[str]:
+    """Return a list of violation strings for constraint fields in *value*.
+    Empty list means the value passed. Only inspects dict values."""
+    if not isinstance(value, dict):
+        return []
+    violations: list[str] = []
+
+    coh = value.get("coherence") if "coherence" in value else value.get("coherence_score")
+    unc = value.get("uncertainty")
+    tern = value.get("ternary")
+
+    if coh is not None and isinstance(coh, (int, float)):
+        if _sv_validate_coherence:
+            try:
+                _sv_validate_coherence(float(coh))
+            except _sv_ConstraintViolation as e:
+                violations.append(f"REQ-01 coherence: {e}")
+            except Exception:
+                pass
+        elif not (0.0 <= float(coh) <= 1.0):
+            violations.append(f"REQ-01 coherence {coh} out of [0,1]")
+
+    if unc is not None and isinstance(unc, (int, float)):
+        if _sv_validate_uncertainty:
+            try:
+                _sv_validate_uncertainty(float(unc))
+            except _sv_ConstraintViolation as e:
+                violations.append(f"REQ-03 uncertainty: {e}")
+            except Exception:
+                pass
+        elif not (0.0 <= float(unc) <= 1.0):
+            violations.append(f"REQ-03 uncertainty {unc} out of [0,1]")
+
+    if tern is not None and isinstance(tern, (list, tuple)) and len(tern) == 3:
+        t0, t1, t2 = tern
+        if _sv_validate_ternary:
+            try:
+                _sv_validate_ternary((float(t0), float(t1), float(t2)))
+            except _sv_ConstraintViolation as e:
+                violations.append(f"REQ-04/05 ternary: {e}")
+            except Exception:
+                pass
+        else:
+            for i, v in enumerate([t0, t1, t2]):
+                if not (-1.0 <= float(v) <= 1.0):
+                    violations.append(f"REQ-04 t{i}={v} out of [-1,1]")
+            if abs(float(t0) + float(t1) + float(t2)) > 1.0:
+                violations.append(f"REQ-05 |sum|={abs(float(t0)+float(t1)+float(t2)):.3f} > 1")
+
+    return violations
+
 
 def _load() -> dict:
     if not os.path.isfile(STORE_PATH):
@@ -47,16 +118,30 @@ def action_set(key: str, value_raw: str, agent: str, ttl: float, tags: list[str]
         value = json.loads(value_raw)
     except json.JSONDecodeError:
         value = value_raw  # treat as plain string
-    store = _load()
-    store["slots"][key] = {
+
+    violations = _sce88_check_value(value)
+
+    slot: dict = {
         "agent": agent,
         "value": value,
         "ts":    time.time(),
         "ttl":   ttl,
         "tags":  tags,
     }
+    if violations:
+        slot["sce88_violations"] = violations  # annotate — write still proceeds
+
+    store = _load()
+    store["slots"][key] = slot
     _save(store)
-    return {"ok": True, "key": key, "written": True}
+
+    result: dict = {"ok": True, "key": key, "written": True}
+    if violations:
+        result["sce88_passed"]     = False
+        result["sce88_violations"] = violations
+    else:
+        result["sce88_passed"] = True
+    return result
 
 
 def action_get(key: str) -> dict:
