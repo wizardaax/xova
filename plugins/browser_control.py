@@ -39,9 +39,9 @@ SITES: dict[str, dict] = {
             'button[data-testid="send-button"]',
         ],
         "response_selectors": [
+            '[data-is-streaming]',
+            '[data-testid*="message"]',
             '.font-claude-message',
-            '[data-testid*="message"] .prose',
-            '.prose p',
         ],
         "login_check_selector": '[contenteditable="true"]',
     },
@@ -139,20 +139,20 @@ def action_open(playwright, site_cfg: dict, headless: bool, wait_login: bool):
     page.goto(site_cfg["url"], wait_until="domcontentloaded", timeout=20000)
 
     if wait_login:
-        # Keep browser open until user closes the tab or we time out (5 min)
+        # Stay open until user manually closes the window (up to 5 min)
         try:
-            page.wait_for_selector(
-                site_cfg.get("login_check_selector", "body"),
-                timeout=300_000,
-                state="attached",
-            )
+            page.wait_for_event("close", timeout=300_000)
         except Exception:
             pass
-        result = {"ok": True, "action": "open", "url": page.url, "msg": "browser ready — log in then close the window"}
+        url = site_cfg["url"]
+        result = {"ok": True, "action": "open", "url": url, "msg": "session saved — run check to verify login"}
     else:
         result = {"ok": True, "action": "open", "url": page.url}
 
-    ctx.close()
+    try:
+        ctx.close()
+    except Exception:
+        pass
     return result
 
 
@@ -167,8 +167,8 @@ def action_check(playwright, site_cfg: dict) -> dict:
     try:
         page = ctx.new_page()
         page.goto(site_cfg["url"], wait_until="domcontentloaded", timeout=15000)
-        time.sleep(2)
-        el, sel = _find(page, site_cfg["prompt_selectors"], timeout=4000)
+        time.sleep(3)
+        el, sel = _find(page, site_cfg["prompt_selectors"], timeout=8000)
         logged_in = el is not None
         return {"ok": True, "logged_in": logged_in, "url": page.url, "selector_found": sel}
     finally:
@@ -218,6 +218,10 @@ def action_send(playwright, site_cfg: dict, prompt: str, headless: bool) -> dict
 
         if not response_text:
             response_text = "(no response captured — selectors may need updating)"
+        else:
+            # Strip aria-live "Claude responded: ..." prefix if present
+            if "\n\n" in response_text and response_text.startswith("Claude responded:"):
+                response_text = response_text.split("\n\n", 1)[-1].strip()
 
         return {
             "ok": True,
