@@ -413,7 +413,7 @@ def _run_evolution() -> None:
                 "content":  f"evolution pass complete · {reason}",
             })
 
-        # Write full log to disk
+        # Write full log to disk; trim to last 50 to prevent unbounded growth
         os.makedirs(EVO_DIR, exist_ok=True)
         ts_str = time.strftime("%Y%m%dT%H%M%S")
         with open(os.path.join(EVO_DIR, f"{ts_str}_evolve.json"), "w", encoding="utf-8") as f:
@@ -424,6 +424,15 @@ def _run_evolution() -> None:
                 "simulated": sims if isinstance(sims, (dict, list)) else {},
                 "applied":  applied if isinstance(applied, (dict, list)) else {},
             }, f, ensure_ascii=False, indent=2, default=str)
+        try:
+            evo_files = sorted(
+                [p for p in os.listdir(EVO_DIR) if p.endswith("_evolve.json")],
+                reverse=True,
+            )
+            for old in evo_files[50:]:
+                os.remove(os.path.join(EVO_DIR, old))
+        except Exception:
+            pass
 
     except Exception as exc:
         _append({
