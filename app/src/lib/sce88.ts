@@ -54,6 +54,7 @@ export const SCE88_EVENT_LEVEL_MAP: Record<string, number[]> = {
   "chat-stream":         [17],            // Semantic Interface
   "tool-call":           [11, 12],        // Execution Coordination + Correctness Enforcement
   "self-eval":           [20],            // Self-Observation (canonical)
+  "self-eval-flagged":   [20],            // Risk-flagged evals also touch Self-Observation
   "auto-correction":     [8, 20],         // Fault Correction + Self-Observation
   "memory-consolidated": [18],            // Adaptive Optimization (learning)
   "recall-injection":    [18],

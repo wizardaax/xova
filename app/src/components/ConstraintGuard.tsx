@@ -3,9 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 
 const FEED_PATH = "C:\\Xova\\memory\\mesh_feed.jsonl";
 
-interface FeedEvent { ts?: number; type?: string; agent?: string; message?: string; severity?: string; constraint?: string; [k: string]: unknown }
+// mesh_feed.jsonl uses "kind" (not "type") and has "risk", "gated", "human_gate" fields
+interface FeedEvent { ts?: number; kind?: string; agent_id?: string; label?: string; content?: string; coherence?: number; risk?: string; gated?: boolean; human_gate?: boolean; [k: string]: unknown }
 
-const VIOLATION_TYPES = ["constraint_violation", "guard_alert", "coherence_fail", "sce88_breach", "sentinel_alert"];
+const VIOLATION_KINDS = ["constraint_violation", "guard_alert", "coherence_fail", "sce88_breach", "sentinel_alert"];
+const HIGH_RISK_KINDS = new Set(["agent_result"]);  // real feed events flagged by risk/gated
 
 function severityBadge(sev?: string): string {
   if (!sev) return "border-zinc-700 text-zinc-500 bg-zinc-900";
@@ -37,7 +39,10 @@ export function ConstraintGuard({ onClose }: { onClose: () => void }) {
         try { return JSON.parse(l) as FeedEvent; } catch { return null; }
       }).filter(Boolean) as FeedEvent[];
       events.reverse();
-      const viols = events.filter(e => VIOLATION_TYPES.includes(e.type ?? ""));
+      const viols = events.filter(e =>
+        VIOLATION_KINDS.includes(e.kind ?? "") ||
+        (HIGH_RISK_KINDS.has(e.kind ?? "") && (e.gated || e.human_gate || e.risk === "high" || e.risk === "critical"))
+      );
       setViolations(viols);
       setAll(events);
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
@@ -78,23 +83,29 @@ export function ConstraintGuard({ onClose }: { onClose: () => void }) {
       )}
 
       <div className="flex-1 overflow-y-auto divide-y divide-zinc-900/50">
-        {displayed.map((e, i) => (
-          <div key={i} className={`px-3 py-1.5 hover:bg-zinc-900/30 ${VIOLATION_TYPES.includes(e.type ?? "") ? "bg-red-950/10" : ""}`}>
-            <div className="flex items-center gap-1.5">
-              <span className="text-zinc-600 text-[9px] tabular-nums shrink-0">{fmtTs(e.ts)}</span>
-              <span className={`text-[9px] px-1 py-0.5 rounded border shrink-0 ${severityBadge(e.severity)}`}>
-                {e.severity ?? e.type ?? "event"}
-              </span>
-              {e.agent && <span className="text-zinc-500 text-[9px] shrink-0">{e.agent}</span>}
-            </div>
-            {(e.message || e.constraint) && (
-              <div className="mt-0.5 text-zinc-400 text-[10px] break-words leading-relaxed">
-                {e.constraint && <span className="text-amber-400/80 mr-1">[{e.constraint}]</span>}
-                {e.message}
+        {displayed.map((e, i) => {
+          const isViol = VIOLATION_KINDS.includes(e.kind ?? "") || e.gated || e.human_gate;
+          return (
+            <div key={i} className={`px-3 py-1.5 hover:bg-zinc-900/30 ${isViol ? "bg-red-950/10" : ""}`}>
+              <div className="flex items-center gap-1.5">
+                <span className="text-zinc-600 text-[9px] tabular-nums shrink-0">{fmtTs(e.ts)}</span>
+                <span className={`text-[9px] px-1 py-0.5 rounded border shrink-0 ${severityBadge(e.risk)}`}>
+                  {e.risk ?? e.kind ?? "event"}
+                </span>
+                {e.agent_id && <span className="text-zinc-500 text-[9px] shrink-0">{e.agent_id}</span>}
+                {e.gated && <span className="text-[9px] px-1 py-0.5 rounded border border-amber-700 text-amber-400 shrink-0">gated</span>}
+                {e.human_gate && <span className="text-[9px] px-1 py-0.5 rounded border border-red-700 text-red-400 shrink-0">human</span>}
+                {e.coherence != null && <span className="text-zinc-600 text-[9px] ml-auto tabular-nums">{(e.coherence as number).toFixed(3)}</span>}
               </div>
-            )}
-          </div>
-        ))}
+              {(e.label || e.content) && (
+                <div className="mt-0.5 text-zinc-400 text-[10px] break-words leading-relaxed">
+                  {e.label && <span className="text-zinc-500 mr-1">[{e.label}]</span>}
+                  {e.content && String(e.content).slice(0, 120)}
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -3,7 +3,19 @@ import { invoke } from "@tauri-apps/api/core";
 
 const INBOX_PATH = "C:\\Xova\\memory\\voice_inbox.json";
 
-interface InboxMessage { id: string; role: "user" | "assistant" | "forge"; ts: number; content: string }
+// voice_inbox.json can be a single object or array; field names vary by source
+interface InboxMessage { id: string; role: "user" | "assistant" | "forge" | "xova"; ts: number; content: string }
+
+function normalise(raw: unknown): InboxMessage | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  return {
+    id: String(r.id ?? r.correlation_id ?? r.ts ?? Math.random()),
+    role: (r.role as InboxMessage["role"]) ?? "assistant",
+    ts: Number(r.ts ?? 0),
+    content: String(r.content ?? r.text ?? r.message ?? ""),
+  };
+}
 
 function fmtTime(ts: number) {
   const ms = ts > 1e12 ? ts : ts * 1000;
@@ -16,6 +28,8 @@ function rolePill(role: InboxMessage["role"]) {
     case "user":      return "border-blue-700 text-blue-400 bg-blue-900/30";
     case "assistant": return "border-emerald-700 text-emerald-400 bg-emerald-900/30";
     case "forge":     return "border-purple-700 text-purple-400 bg-purple-900/30";
+    case "xova":      return "border-emerald-700 text-emerald-400 bg-emerald-900/30";
+    default:          return "border-zinc-700 text-zinc-400 bg-zinc-900/30";
   }
 }
 
@@ -24,6 +38,8 @@ function rowBorderColor(role: InboxMessage["role"]) {
     case "user":      return "#3b82f6";
     case "assistant": return "#10b981";
     case "forge":     return "#a855f7";
+    case "xova":      return "#10b981";
+    default:          return "#52525b";
   }
 }
 
@@ -39,8 +55,9 @@ export function VoiceInbox({ onClose }: { onClose: () => void }) {
   const refresh = useCallback(async () => {
     try {
       const raw = await invoke<string>("xova_read_file", { path: INBOX_PATH });
-      const arr = JSON.parse(raw ?? "[]");
-      setMessages(Array.isArray(arr) ? arr as InboxMessage[] : []);
+      const parsed = JSON.parse(raw ?? "[]");
+      const items = Array.isArray(parsed) ? parsed : [parsed];
+      setMessages(items.map(normalise).filter(Boolean) as InboxMessage[]);
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
       setError(null);
     } catch (e) { setError(String(e)); }

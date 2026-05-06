@@ -45,7 +45,7 @@ export function RffMetrics({ onClose }: { onClose: () => void }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const raw = await invoke<string>("xova_run", { command: `${PYTHON} ${SCRIPT}`, cwd: "C:\\Xova", elevated: false });
+      const raw = await invoke<string>("xova_run", { command: `"${PYTHON}" "${SCRIPT}"`, cwd: "C:\\Xova", elevated: false });
       let stdout = raw;
       try { const wrap = JSON.parse(raw) as { stdout?: string }; if (wrap.stdout !== undefined) stdout = wrap.stdout; } catch { /* raw */ }
       setData(JSON.parse(stdout) as RffResult);

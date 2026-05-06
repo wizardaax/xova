@@ -12,23 +12,28 @@ export function CameraMonitor({ onClose }: CameraMonitorProps) {
   const [audioLevel, setAudioLevel] = useState(0);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animRef = useRef<number>(0);
+  const ctxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     let cancelled = false;
 
-    navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+    navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: false },
+    })
       .then(stream => {
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
-          videoRef.current.muted = true; // mute self-monitor to prevent feedback
+          videoRef.current.muted = true;
           videoRef.current.play().catch(() => {});
         }
 
         // audio level meter
         try {
           const ctx = new AudioContext();
+          ctxRef.current = ctx;
           const src = ctx.createMediaStreamSource(stream);
           const analyser = ctx.createAnalyser();
           analyser.fftSize = 256;
@@ -49,6 +54,10 @@ export function CameraMonitor({ onClose }: CameraMonitorProps) {
     return () => {
       cancelled = true;
       cancelAnimationFrame(animRef.current);
+      analyserRef.current?.disconnect();
+      analyserRef.current = null;
+      ctxRef.current?.close();
+      ctxRef.current = null;
       streamRef.current?.getTracks().forEach(t => t.stop());
       streamRef.current = null;
     };

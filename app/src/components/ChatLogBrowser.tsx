@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 const FILES = [
-  { path: "C:\\Xova\\memory\\adam.jsonl",  label: "adam",  color: "#60a5fa" },
-  { path: "C:\\Xova\\memory\\xova.jsonl",  label: "xova",  color: "#34d399" },
-  { path: "C:\\Xova\\memory\\jarvis.jsonl", label: "jarvis", color: "#a78bfa" },
+  { path: "C:\\Xova\\memory\\chat_log\\adam.jsonl",   label: "adam",   color: "#60a5fa" },
+  { path: "C:\\Xova\\memory\\chat_log\\xova.jsonl",   label: "xova",   color: "#34d399" },
+  { path: "C:\\Xova\\memory\\chat_log\\jarvis.jsonl", label: "jarvis", color: "#a78bfa" },
 ];
 
 interface ChatLine { id: string; ts: number; from: string; to: string; text: string }

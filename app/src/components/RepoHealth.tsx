@@ -16,7 +16,7 @@ export function RepoHealth({ onClose }: Props) {
   const refresh = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const raw = await invoke<string>("xova_run", { command: `${PYTHON} ${SCRIPT}`, cwd: "C:\\Xova", elevated: false });
+      const raw = await invoke<string>("xova_run", { command: `"${PYTHON}" "${SCRIPT}"`, cwd: "C:\\Xova", elevated: false });
       let stdout = raw;
       try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout !== undefined) stdout = w.stdout; } catch { /* raw */ }
       setRepos(JSON.parse(stdout) as RepoInfo[]);

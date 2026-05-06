@@ -18,7 +18,8 @@ const AGENT_COLORS: Record<string, string> = {
 
 function ageColor(last_seen?: number): string {
   if (last_seen == null) return "text-zinc-600";
-  const age = (Date.now() / 1000) - last_seen;
+  // last_seen is epoch ms (matches agent_board.json actual schema)
+  const age = (Date.now() - last_seen) / 1000;
   if (age > 120) return "text-red-400";
   if (age > 30) return "text-amber-400";
   return "text-emerald-400";
@@ -26,7 +27,7 @@ function ageColor(last_seen?: number): string {
 
 function fmtAge(last_seen?: number): string {
   if (last_seen == null) return "—";
-  const s = Math.round((Date.now() / 1000) - last_seen);
+  const s = Math.round((Date.now() - last_seen) / 1000);
   if (s < 60) return `${s}s ago`;
   return `${Math.floor(s / 60)}m ${s % 60}s ago`;
 }
