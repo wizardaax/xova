@@ -66,8 +66,10 @@ NO_WIN       = 0x08000000
 # Full path to claude.exe — pythonw inherits a minimal PATH that omits npm dirs.
 CLAUDE_EXE   = r"C:\Users\adz_7\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe"
 RATE_LOG     = r"C:\Xova\memory\forge_rate_log.json"  # persisted rate limit timestamps
-SCE88_GATE   = r"C:\Xova\plugins\sce88_gate.py"
+SCE88_GATE        = r"C:\Xova\plugins\sce88_gate.py"
 CONTEXT_BROKER_STORE = r"C:\Xova\memory\context_broker.json"
+VIOLATIONS_LOG    = r"C:\Xova\memory\sentinel_violations.jsonl"
+VIOLATIONS_CAP    = 1000
 
 _call_timestamps:    list[float] = []  # wall-time of recent claude --print calls
 _last_inbox_ts:      int = 0
@@ -310,6 +312,23 @@ def _deliver_reply(text: str, from_agent: str, correlation_id: str | None, origi
         _log(f"routed forge->xova: '{text[:60]}'")
 
 
+def _append_violation(source: str, context: str, coherence: float,
+                      violations: list, **extra) -> None:
+    entry = {"ts": time.time(), "source": source, "context": context,
+             "coherence": coherence, "violations": violations, **extra}
+    try:
+        os.makedirs(os.path.dirname(VIOLATIONS_LOG), exist_ok=True)
+        with open(VIOLATIONS_LOG, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        with open(VIOLATIONS_LOG, "r", encoding="utf-8") as fh:
+            lines = fh.readlines()
+        if len(lines) > VIOLATIONS_CAP:
+            with open(VIOLATIONS_LOG, "w", encoding="utf-8") as fh:
+                fh.writelines(lines[-VIOLATIONS_CAP:])
+    except Exception:
+        pass
+
+
 def _sce88_check(text: str, from_agent: str) -> str:
     """Run the SCE-88 constraint gate. Returns text (possibly prepended with alert)."""
     try:
@@ -336,8 +355,10 @@ def _sce88_check(text: str, from_agent: str) -> str:
         )
         gate = json.loads(result.stdout.strip()) if result.stdout.strip() else {}
         if not gate.get("passed", True) and gate.get("violations"):
-            summary = "; ".join(gate["violations"])
+            violations = gate["violations"]
+            summary = "; ".join(violations)
             _log(f"SCE-88 advisory: {summary}")
+            _append_violation("forge", f"forge_inbox:{from_agent}", coherence, violations)
             return f"[SCE-88: {summary}] {text}"
     except Exception as exc:
         _log(f"SCE-88 gate error (non-blocking): {exc}")

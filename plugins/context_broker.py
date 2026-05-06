@@ -35,6 +35,36 @@ except Exception:
     pass
 
 
+VIOLATIONS_LOG = r"C:\Xova\memory\sentinel_violations.jsonl"
+VIOLATIONS_CAP  = 1000
+
+
+def _append_violation(source: str, context: str, coherence: float,
+                      violations: list[str], **extra: object) -> None:
+    entry = {"ts": time.time(), "source": source, "context": context,
+             "coherence": coherence, "violations": violations, **extra}
+    try:
+        os.makedirs(os.path.dirname(VIOLATIONS_LOG), exist_ok=True)
+        with open(VIOLATIONS_LOG, "a", encoding="utf-8") as fh:
+            fh.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        # rotate at cap
+        with open(VIOLATIONS_LOG, "r", encoding="utf-8") as fh:
+            lines = fh.readlines()
+        if len(lines) > VIOLATIONS_CAP:
+            with open(VIOLATIONS_LOG, "w", encoding="utf-8") as fh:
+                fh.writelines(lines[-VIOLATIONS_CAP:])
+    except Exception:
+        pass
+
+
+def _extract_coherence(value: object) -> float:
+    if isinstance(value, dict):
+        c = value.get("coherence") or value.get("coherence_score")
+        if isinstance(c, (int, float)):
+            return float(c)
+    return 0.0
+
+
 def _sce88_check_value(value: object) -> list[str]:
     """Return a list of violation strings for constraint fields in *value*.
     Empty list means the value passed. Only inspects dict values."""
@@ -130,6 +160,7 @@ def action_set(key: str, value_raw: str, agent: str, ttl: float, tags: list[str]
     }
     if violations:
         slot["sce88_violations"] = violations  # annotate — write still proceeds
+        _append_violation("broker", f"set:{key}", _extract_coherence(value), violations, key=key, agent=agent)
 
     store = _load()
     store["slots"][key] = slot
