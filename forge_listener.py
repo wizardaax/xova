@@ -49,9 +49,10 @@ if _already_running():
     sys.exit(0)
 # ────────────────────────────────────────────────────────────────────────────
 
-FORGE_INBOX  = r"C:\Xova\memory\forge_inbox.json"
-FORGE_OUTBOX = r"C:\Xova\memory\forge_outbox.json"
-FORGE_QUEUE  = r"C:\Xova\memory\forge_queue.json"
+FORGE_INBOX        = r"C:\Xova\memory\forge_inbox.json"
+FORGE_INBOX_CURSOR = r"C:\Xova\memory\forge_inbox_cursor.json"
+FORGE_OUTBOX       = r"C:\Xova\memory\forge_outbox.json"
+FORGE_QUEUE        = r"C:\Xova\memory\forge_queue.json"
 JARVIS_INBOX = r"C:\Xova\memory\jarvis_inbox.json"
 VOICE_INBOX  = r"C:\Xova\memory\voice_inbox.json"
 MESH_FLAGS   = r"C:\Xova\memory\mesh_flags.json"
@@ -95,6 +96,30 @@ def _log(msg: str) -> None:
             fh.writelines(lines)
     except Exception:
         pass
+
+
+def _load_inbox_cursor() -> int:
+    """AUDIT-2-024: load last-processed inbox ts from persistent cursor file."""
+    try:
+        with open(FORGE_INBOX_CURSOR, encoding="utf-8") as fh:
+            return int(json.load(fh).get("last_ts", 0))
+    except FileNotFoundError:
+        return 0
+    except Exception as exc:
+        _log(f"cursor load failed: {exc}")
+        return 0
+
+
+def _save_inbox_cursor(ts: int) -> None:
+    """AUDIT-2-024: persist last-processed ts so restarts don't replay messages."""
+    try:
+        os.makedirs(os.path.dirname(FORGE_INBOX_CURSOR), exist_ok=True)
+        tmp = FORGE_INBOX_CURSOR + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump({"last_ts": ts, "updated_at": time.time()}, fh)
+        os.replace(tmp, FORGE_INBOX_CURSOR)
+    except Exception as exc:
+        _log(f"cursor save failed: {exc}")
 
 
 def _load_rate_log() -> None:
@@ -229,7 +254,7 @@ def _call_claude(text: str) -> str:
     if not os.path.exists(CLAUDE_EXE):
         return f"(claude CLI not found at {CLAUDE_EXE})"
     last_err: str = ""
-    for attempt in range(2):
+    for attempt in range(3):
         try:
             proc = subprocess.run(
                 [CLAUDE_EXE, "--print"],
@@ -248,10 +273,10 @@ def _call_claude(text: str) -> str:
             return f"(claude CLI not found at {CLAUDE_EXE})"
         except Exception as exc:
             last_err = str(exc)
-        if attempt == 0:
-            _log(f"claude --print failed (attempt 1): {last_err} — retrying in 3s")
-            time.sleep(3)
-    return f"(claude call failed after 2 attempts: {last_err})"
+        if attempt < 2:
+            _log(f"claude --print failed (attempt {attempt + 1}): {last_err} — retrying in 2s")
+            time.sleep(2)
+    return f"(claude call failed after 3 attempts: {last_err})"
 
 
 def _deliver_reply(text: str, from_agent: str, correlation_id: str | None, original_ts: int) -> None:
@@ -293,6 +318,7 @@ def _route_inbox(mode: str) -> None:
     if ts <= _last_inbox_ts:
         return
     _last_inbox_ts = ts
+    _save_inbox_cursor(ts)  # AUDIT-2-024
 
     text = data.get("text", "").strip()
     from_agent = str(data.get("from", "xova")).lower()
@@ -452,11 +478,14 @@ def _drain_startup_queue() -> None:
 
 def main() -> None:
     global _last_inbox_ts
-    # Seed _last_inbox_ts from the current inbox so we don't replay the
-    # last message through claude --print on every restart (AUDIT-2-024).
-    existing = _read_json(FORGE_INBOX)
-    if existing and isinstance(existing.get("ts"), int):
-        _last_inbox_ts = existing["ts"]
+    # AUDIT-2-024: use persistent cursor file; fall back to inbox ts on first run.
+    _last_inbox_ts = _load_inbox_cursor()
+    if _last_inbox_ts == 0:
+        existing = _read_json(FORGE_INBOX)
+        if existing and isinstance(existing.get("ts"), int):
+            _last_inbox_ts = existing["ts"]
+            _save_inbox_cursor(_last_inbox_ts)
+    _log(f"startup cursor: last_inbox_ts={_last_inbox_ts}")
     _load_rate_log()  # AUDIT-2-005: restore rate counter from disk
     if _mode() == "live":
         _drain_startup_queue()  # AUDIT-2-003: process items queued before last restart
