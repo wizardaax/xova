@@ -18,9 +18,17 @@ import { SessionBrowser } from "./SessionBrowser";
 import { PluginEditor } from "./PluginEditor";
 import { PythonRepl } from "./PythonRepl";
 import { SelfEvalChart } from "./SelfEvalChart";
+import { NotesBrowser } from "./NotesBrowser";
+import { TernaryExplorer } from "./TernaryExplorer";
+import { MeshFlagsEditor } from "./MeshFlagsEditor";
+import { Sce88Audit } from "./Sce88Audit";
+import { ShellHistory } from "./ShellHistory";
+import { CorpusStats } from "./CorpusStats";
+import { CoherenceTimeline } from "./CoherenceTimeline";
+import { AgentHeatmap } from "./AgentHeatmap";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",    label: "Camera",    emoji: "📷" },
@@ -40,7 +48,15 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "sessions",  label: "Sessions",  emoji: "📚" },
   { id: "editor",    label: "Editor",    emoji: "✏️" },
   { id: "repl",      label: "REPL",      emoji: "🐍" },
-  { id: "selfeval",  label: "Self-Eval", emoji: "📈" },
+  { id: "selfeval",  label: "Self-Eval",  emoji: "📈" },
+  { id: "notes",     label: "Notes",      emoji: "📓" },
+  { id: "ternary",   label: "Ternary",    emoji: "⚖️" },
+  { id: "flags",     label: "Flags",      emoji: "🚩" },
+  { id: "sce88",     label: "SCE-88",     emoji: "🧩" },
+  { id: "shell",     label: "Shell",      emoji: "🖥️" },
+  { id: "corpus",    label: "Corpus",     emoji: "📂" },
+  { id: "coherence", label: "Coherence",  emoji: "📉" },
+  { id: "heatmap",   label: "Heatmap",    emoji: "🟩" },
 ];
 
 interface WorkspaceDockProps {
@@ -122,6 +138,14 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "editor"    && <PluginEditor      onClose={() => onTab(null)} />}
             {activeTab === "repl"      && <PythonRepl        onClose={() => onTab(null)} />}
             {activeTab === "selfeval"  && <SelfEvalChart     onClose={() => onTab(null)} />}
+            {activeTab === "notes"     && <NotesBrowser     onClose={() => onTab(null)} />}
+            {activeTab === "ternary"   && <TernaryExplorer  onClose={() => onTab(null)} />}
+            {activeTab === "flags"     && <MeshFlagsEditor  onClose={() => onTab(null)} />}
+            {activeTab === "sce88"     && <Sce88Audit       onClose={() => onTab(null)} />}
+            {activeTab === "shell"     && <ShellHistory     onClose={() => onTab(null)} />}
+            {activeTab === "corpus"    && <CorpusStats      onClose={() => onTab(null)} />}
+            {activeTab === "coherence" && <CoherenceTimeline onClose={() => onTab(null)} />}
+            {activeTab === "heatmap"   && <AgentHeatmap     onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
