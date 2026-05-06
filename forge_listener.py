@@ -1,0 +1,460 @@
+"""
+forge_listener.py — Xova/Jarvis ↔ Forge message router.
+
+Polls every 1s. Reads forge_mode from mesh_flags.json on each cycle so mode
+changes take effect without a restart.
+
+Modes:
+  off   — no-op; daemon stays alive to detect mode changes.
+  live  — routes forge_inbox.json → claude --print → forge_outbox.json.
+           Also routes voice_inbox.json (to=forge) back to forge_inbox for
+           multi-turn Jarvis↔Forge chains.
+  queue — queues messages to forge_queue.json without invoking claude.
+           forge_outbox routing still active.
+
+Rate limit: max 20 claude --print calls per hour. When limit is hit,
+the message is queued and the caller receives "rate limit reached, queued instead."
+The counter resets on a rolling 1-hour window.
+
+Singleton: exits immediately if another forge_listener.py is already running.
+"""
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+
+# ── Singleton guard ──────────────────────────────────────────────────────────
+def _already_running() -> bool:
+    try:
+        result = subprocess.run(
+            ["powershell.exe", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_Process -Filter \"name='pythonw.exe'\" "
+             "| Select-Object -ExpandProperty CommandLine"],
+            capture_output=True, text=True, timeout=10,
+            creationflags=0x08000000,
+        )
+        lines = result.stdout.splitlines()
+        siblings = [l for l in lines if "forge_listener" in l]
+        return len(siblings) > 1
+    except Exception:
+        return False
+
+if _already_running():
+    sys.exit(0)
+# ────────────────────────────────────────────────────────────────────────────
+
+FORGE_INBOX  = r"C:\Xova\memory\forge_inbox.json"
+FORGE_OUTBOX = r"C:\Xova\memory\forge_outbox.json"
+FORGE_QUEUE  = r"C:\Xova\memory\forge_queue.json"
+JARVIS_INBOX = r"C:\Xova\memory\jarvis_inbox.json"
+VOICE_INBOX  = r"C:\Xova\memory\voice_inbox.json"
+MESH_FLAGS   = r"C:\Xova\memory\mesh_flags.json"
+AGENT_BOARD  = r"C:\Xova\memory\agent_board.json"
+LOG_PATH     = r"C:\Xova\memory\forge_listener.log"
+
+RATE_LIMIT   = 20    # max claude --print calls per rolling hour
+QUEUE_CAP    = 100   # max entries in forge_queue.json
+POLL_SEC     = 1
+NO_WIN       = 0x08000000
+# Full path to claude.exe — pythonw inherits a minimal PATH that omits npm dirs.
+CLAUDE_EXE   = r"C:\Users\adz_7\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe"
+RATE_LOG     = r"C:\Xova\memory\forge_rate_log.json"  # persisted rate limit timestamps
+
+_call_timestamps:    list[float] = []  # wall-time of recent claude --print calls
+_last_inbox_ts:      int = 0
+_last_voice_ts:      int = 0
+_last_forge_voice_ts: int = 0        # AUDIT-2-006: separate cursor for forge-bound relay dedup
+_last_board_at:      float = 0.0
+
+
+LOG_CAP = 500
+
+def _log(msg: str) -> None:
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    line = f"{ts} [forge_listener] {msg}"
+    try:
+        print(line)
+    except Exception:
+        pass
+    try:
+        try:
+            with open(LOG_PATH, "r", encoding="utf-8") as fh:
+                lines = fh.readlines()
+        except FileNotFoundError:
+            lines = []
+        lines.append(line + "\n")
+        if len(lines) > LOG_CAP:
+            lines = lines[-(LOG_CAP - 1):]
+        with open(LOG_PATH, "w", encoding="utf-8") as fh:
+            fh.writelines(lines)
+    except Exception:
+        pass
+
+
+def _load_rate_log() -> None:
+    """AUDIT-2-005: on startup, restore call timestamps from disk and prune old ones."""
+    global _call_timestamps
+    try:
+        with open(RATE_LOG, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        raw = data.get("timestamps", [])
+        now = time.time()
+        _call_timestamps = [t for t in raw if isinstance(t, (int, float)) and now - t < 3600]
+        if _call_timestamps:
+            _log(f"rate log loaded: {len(_call_timestamps)} calls in last hour (cap {RATE_LIMIT})")
+    except FileNotFoundError:
+        pass
+    except Exception as exc:
+        _log(f"rate log load failed: {exc}")
+
+
+def _save_rate_log() -> None:
+    """Persist current call timestamps to disk so restarts don't reset the counter."""
+    try:
+        with open(RATE_LOG, "w", encoding="utf-8") as f:
+            json.dump({"timestamps": _call_timestamps}, f)
+    except Exception as exc:
+        _log(f"rate log save failed: {exc}")
+
+
+def _mode() -> str:
+    try:
+        with open(MESH_FLAGS, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # Unwrap double-JSON encoding if saveMemory wrapped value as a string
+        if isinstance(data, str):
+            data = json.loads(data)
+        return str(data.get("forge_mode", "off"))
+    except Exception:
+        return "off"
+
+
+def _read_json(path: str) -> dict | None:
+    try:
+        # utf-8-sig strips BOM if present (PS5.1 Set-Content -Encoding utf8 adds one)
+        with open(path, "r", encoding="utf-8-sig") as f:
+            return json.load(f)
+    except Exception:
+        return None
+
+
+def _write_json(path: str, obj: dict) -> bool:
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(obj, f, ensure_ascii=False)
+        return True
+    except Exception as exc:
+        _log(f"write {os.path.basename(path)} failed: {exc}")
+        return False
+
+
+def _append_outbox(path: str, obj: dict) -> bool:
+    """AUDIT-2-004: append obj to the outbox JSON array (atomic read-modify-write).
+    Initialises to [] if the file is missing or contains a legacy single-object."""
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                existing = json.load(f)
+            if not isinstance(existing, list):
+                # Migrate legacy single-object format to array
+                existing = [existing]
+        except (FileNotFoundError, json.JSONDecodeError):
+            existing = []
+        existing.append(obj)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(existing, f, ensure_ascii=False)
+        return True
+    except Exception as exc:
+        _log(f"append_outbox {os.path.basename(path)} failed: {exc}")
+        return False
+
+
+def _rate_ok() -> bool:
+    global _call_timestamps
+    now = time.time()
+    _call_timestamps = [t for t in _call_timestamps if now - t < 3600]
+    return len(_call_timestamps) < RATE_LIMIT
+
+
+def _record_call() -> None:
+    _call_timestamps.append(time.time())
+    _save_rate_log()  # AUDIT-2-005: persist so restarts don't reset the counter
+
+
+def _rate_used() -> int:
+    now = time.time()
+    return len([t for t in _call_timestamps if now - t < 3600])
+
+
+def _enqueue(msg: dict) -> None:
+    try:
+        try:
+            with open(FORGE_QUEUE, "r", encoding="utf-8") as f:
+                q = json.load(f)
+            if not isinstance(q, list):
+                q = []
+        except Exception:
+            q = []
+        q.append(msg)
+        if len(q) > QUEUE_CAP:
+            dropped = len(q) - QUEUE_CAP
+            q = q[dropped:]
+            _log(f"queue capped — dropped {dropped} oldest entries")
+        with open(FORGE_QUEUE, "w", encoding="utf-8") as f:
+            json.dump(q, f, ensure_ascii=False)
+    except Exception as exc:
+        _log(f"enqueue failed: {exc}")
+
+
+def _call_claude(text: str) -> str:
+    """Invoke claude --print via stdin. Returns response text.
+    Uses absolute path to claude.exe so pythonw's minimal PATH is not a problem.
+    Retries once with 3s backoff on subprocess failure (AUDIT-2-007)."""
+    exe = CLAUDE_EXE if os.path.exists(CLAUDE_EXE) else "claude"
+    last_err: str = ""
+    for attempt in range(2):
+        try:
+            proc = subprocess.run(
+                [exe, "--print"],
+                input=text,
+                capture_output=True,
+                text=True,
+                timeout=120,
+                creationflags=NO_WIN,
+            )
+            if proc.returncode == 0:
+                return proc.stdout.strip() or "(no output)"
+            last_err = f"exit {proc.returncode}: {(proc.stderr or '').strip()[:80]}"
+        except subprocess.TimeoutExpired:
+            return "(claude --print timed out after 120s)"
+        except FileNotFoundError:
+            return f"(claude CLI not found at {exe})"
+        except Exception as exc:
+            last_err = str(exc)
+        if attempt == 0:
+            _log(f"claude --print failed (attempt 1): {last_err} — retrying in 3s")
+            time.sleep(3)
+    return f"(claude call failed after 2 attempts: {last_err})"
+
+
+def _deliver_reply(text: str, from_agent: str, correlation_id: str | None, original_ts: int) -> None:
+    """Append reply to forge_outbox.json array and route reply to Xova or Jarvis.
+    AUDIT-2-004: outbox is now an append-log (JSON array) so concurrent replies
+    do not overwrite each other. Consumers drain by reading all entries and
+    writing back an empty array (or searching by correlation_id)."""
+    now = int(time.time() * 1000)
+    payload: dict = {
+        "intent": "reply",
+        "from": "forge",
+        "to": from_agent,
+        "text": text,
+        "ts": now,
+    }
+    if correlation_id:
+        payload["correlation_id"] = correlation_id
+
+    _append_outbox(FORGE_OUTBOX, payload)
+
+    if from_agent == "jarvis":
+        # Route back into Jarvis inbox so XovaInboxListener picks it up
+        _write_json(JARVIS_INBOX, payload)
+        _log(f"routed forge->jarvis: '{text[:60]}'")
+    else:
+        # Route to Xova via voice_inbox with role="forge"
+        voice_payload = {**payload, "role": "forge"}
+        _write_json(VOICE_INBOX, voice_payload)
+        _log(f"routed forge->xova: '{text[:60]}'")
+
+
+def _route_inbox(mode: str) -> None:
+    """Process new forge_inbox.json messages; invoke claude or queue."""
+    global _last_inbox_ts
+    data = _read_json(FORGE_INBOX)
+    if data is None:
+        return
+    ts = int(data.get("ts", 0))
+    if ts <= _last_inbox_ts:
+        return
+    _last_inbox_ts = ts
+
+    text = data.get("text", "").strip()
+    from_agent = str(data.get("from", "xova")).lower()
+    correlation_id: str | None = data.get("correlation_id") or None
+    if not text:
+        return
+
+    _log(f"inbox: from={from_agent} mode={mode} text='{text[:60]}' corr={correlation_id}")
+
+    if mode == "queue":
+        _enqueue(data)
+        _deliver_reply(
+            "Queued for next Forge session (forge_mode=queue).",
+            from_agent, correlation_id, ts,
+        )
+        return
+
+    # mode == "live" — check rate limit
+    if not _rate_ok():
+        used = _rate_used()
+        _log(f"rate limit hit ({used}/{RATE_LIMIT} calls in last hour) — queuing instead")
+        _enqueue(data)
+        _deliver_reply(
+            f"Rate limit reached ({RATE_LIMIT}/hour). Message queued instead.",
+            from_agent, correlation_id, ts,
+        )
+        return
+
+    _log(f"calling claude --print (calls this hour: {_rate_used() + 1}/{RATE_LIMIT})")
+    reply_text = _call_claude(text)
+    _record_call()
+    _log(f"claude replied: '{reply_text[:80]}'")
+    _deliver_reply(reply_text, from_agent, correlation_id, ts)
+
+
+def _route_voice_to_forge(mode: str) -> None:
+    """Relay voice_inbox.json entries with to='forge' back into forge_inbox.
+    Enables multi-turn Jarvis↔Forge chains without App.tsx involvement.
+    AUDIT-2-006: uses _last_forge_voice_ts as a separate cursor for forge-bound
+    entries so a non-forge entry at a higher ts cannot block a forge entry at a
+    lower ts from being relayed."""
+    global _last_voice_ts, _last_forge_voice_ts
+    data = _read_json(VOICE_INBOX)
+    if data is None:
+        return
+    ts = int(data.get("ts", 0))
+    to_field = str(data.get("to", "")).lower()
+
+    if to_field != "forge":
+        # Non-forge entry: advance shared cursor if newer, then ignore.
+        if ts > _last_voice_ts:
+            _last_voice_ts = ts
+        return
+
+    # Forge-bound entry: gate on the forge-specific cursor.
+    if ts <= _last_forge_voice_ts:
+        return
+    # Advance both cursors so neither cursor replays this entry.
+    _last_forge_voice_ts = ts
+    if ts > _last_voice_ts:
+        _last_voice_ts = ts
+
+    _log(f"voice->forge relay: '{str(data.get('text', ''))[:60]}'")
+    relay = {
+        "intent": "reply",
+        "from": str(data.get("role", data.get("from", "jarvis"))),
+        "to": "forge",
+        "text": data.get("text", ""),
+        "ts": int(time.time() * 1000),
+    }
+    if data.get("correlation_id"):
+        relay["correlation_id"] = data["correlation_id"]
+
+    if mode == "live":
+        _write_json(FORGE_INBOX, relay)
+    elif mode == "queue":
+        _enqueue(relay)
+
+
+def _update_board() -> None:
+    """Heartbeat write to agent_board.json forge section (~60s interval).
+    Last-write-wins — acceptable for heartbeat data."""
+    global _last_board_at
+    now = time.time()
+    if now - _last_board_at < 60:
+        return
+    _last_board_at = now
+    try:
+        try:
+            with open(AGENT_BOARD, "r", encoding="utf-8") as f:
+                board = json.load(f)
+        except Exception:
+            board = {}
+        board.setdefault("xova",   {"alive": False, "last_seen": 0, "current_task": None})
+        board.setdefault("jarvis", {"alive": False, "last_seen": 0, "current_task": None})
+        board.setdefault("shared", {"active_correlation_id": None, "context": {}})
+        board["forge"] = {
+            "alive": True,
+            "last_seen": int(now * 1000),
+            "forge_mode": _mode(),
+            "calls_this_hour": _rate_used(),
+        }
+        board["ts"] = int(now * 1000)
+        with open(AGENT_BOARD, "w", encoding="utf-8") as f:
+            json.dump(board, f, ensure_ascii=False, indent=2)
+    except Exception as exc:
+        _log(f"board update failed: {exc}")
+
+
+def _drain_startup_queue() -> None:
+    """AUDIT-2-003: on startup in live mode, process any items left in forge_queue.json.
+    Processes front-to-back, stops on rate limit, writes remaining items back."""
+    try:
+        with open(FORGE_QUEUE, "r", encoding="utf-8") as f:
+            q = json.load(f)
+        if not isinstance(q, list) or not q:
+            return
+    except FileNotFoundError:
+        return
+    except Exception as exc:
+        _log(f"startup drain read failed: {exc}")
+        return
+
+    _log(f"startup drain: {len(q)} queued item(s) found")
+    processed = 0
+    for item in q:
+        if not _rate_ok():
+            _log("startup drain: rate limit reached — leaving remaining items in queue")
+            break
+        text = item.get("text", "").strip()
+        if not text:
+            processed += 1
+            continue
+        from_agent = str(item.get("from", "xova")).lower()
+        correlation_id: str | None = item.get("correlation_id") or None
+        original_ts = int(item.get("ts", 0))
+        _log(f"startup drain: calling claude for from={from_agent} text='{text[:60]}'")
+        reply = _call_claude(text)
+        _record_call()
+        _log(f"startup drain: reply='{reply[:80]}'")
+        _deliver_reply(reply, from_agent, correlation_id, original_ts)
+        processed += 1
+
+    remaining = q[processed:]
+    try:
+        with open(FORGE_QUEUE, "w", encoding="utf-8") as f:
+            json.dump(remaining, f, ensure_ascii=False)
+        _log(f"startup drain: processed {processed}, remaining {len(remaining)}")
+    except Exception as exc:
+        _log(f"startup drain queue write failed: {exc}")
+
+
+def main() -> None:
+    global _last_inbox_ts
+    # Seed _last_inbox_ts from the current inbox so we don't replay the
+    # last message through claude --print on every restart (AUDIT-2-024).
+    existing = _read_json(FORGE_INBOX)
+    if existing and isinstance(existing.get("ts"), int):
+        _last_inbox_ts = existing["ts"]
+    _load_rate_log()  # AUDIT-2-005: restore rate counter from disk
+    if _mode() == "live":
+        _drain_startup_queue()  # AUDIT-2-003: process items queued before last restart
+    _log("forge_listener started")
+    while True:
+        try:
+            mode = _mode()
+            if mode != "off":
+                _route_inbox(mode)
+                _route_voice_to_forge(mode)
+            _update_board()
+        except Exception as exc:
+            _log(f"tick error: {exc}")
+        time.sleep(POLL_SEC)
+
+
+if __name__ == "__main__":
+    main()

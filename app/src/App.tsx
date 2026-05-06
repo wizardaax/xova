@@ -5,12 +5,13 @@ import { ChatFeed } from "@/components/ChatFeed";
 import { SwanBackdrop } from "@/components/SwanBackdrop";
 import { CommandBar } from "@/components/CommandBar";
 import { StatusBar } from "@/components/StatusBar";
+import { MeshFeed } from "@/components/MeshFeed";
 import { WorkspaceDock } from "@/components/WorkspaceDock";
 import { CommandPalette, type PaletteItem } from "@/components/CommandPalette";
 import { ControlPanel } from "@/components/ControlPanel";
 import { SquaresFour } from "@phosphor-icons/react";
 import { useMesh } from "@/hooks/use-mesh";
-import { TASK_TYPES, type TaskType, saveMemory, loadMemory, ollamaChat, ollamaChatStream, dispatchMesh, cascadeMesh, loadOllamaSettings, saveOllamaSettings, type OllamaSettings, DEFAULT_SETTINGS } from "@/lib/mesh";
+import { TASK_TYPES, type TaskType, saveMemory, loadMemory, ollamaChat, ollamaChatStream, dispatchMesh, cascadeMesh, loadOllamaSettings, saveOllamaSettings, type OllamaSettings, DEFAULT_SETTINGS, loadMeshFlags, saveMeshFlags, type MeshFlags, DEFAULT_MESH_FLAGS } from "@/lib/mesh";
 import { xovaPhase, GlyphPhaseEngine, PhaseState } from "@/lib/glyph_phase";
 import * as RFF from "@/lib/rff_math";
 import { evalTernExpression } from "@/lib/ziltrix_ternary";
@@ -83,9 +84,9 @@ function summariseDispatch(taskType: TaskType, args: Record<string, unknown>, re
 const RECALL_STOPWORDS = new Set([
   "the","and","but","with","this","that","what","when","where","how","why","you",
   "are","for","not","can","get","let","its","was","has","have","had","does","did",
-  "into","from","over","under","about","into","than","then","also","like","just",
-  "your","mine","ours","they","them","there","here","some","much","more","most",
-  "very","much","such","each","every","this","these","those","being","been","were",
+  "into","from","over","under","about","than","then","also","like","just",
+  "your","mine","ours","they","them","there","here","some","more","most",
+  "very","much","such","each","every","these","those","being","been","were",
 ]);
 function recallTokens(s: string): string[] {
   const lower = s.toLowerCase();
@@ -93,30 +94,34 @@ function recallTokens(s: string): string[] {
   return all.filter((t) => !RECALL_STOPWORDS.has(t));
 }
 interface RecallEntry { session: string; ts: number; role: string; text: string; }
-/**
- * Append a notable runtime event to forge_events.jsonl so a future Code Forger
- * session can grep it. Best-effort, silent on failure. One JSON object per line.
- */
-async function logForgeEvent(kind: string, note?: string, extra?: Record<string, unknown>) {
-  // Auto-tag against SCE-88 levels — every runtime event maps to one or more
-  // levels in the 22×4 coherence stack. Tally is queryable via /sce.
+// Canonical kind values for forge_events.jsonl — grep-stable identifiers.
+// Keep hyphen-separated lowercase. Add here when adding a new kind.
+type ForgeEventKind =
+  | "self-eval" | "self-eval-flagged" | "auto-correction"
+  | "plan-saved" | "plan-complete" | "goal-push" | "goal-pop" | "goal-auto-pop"
+  | "memory-consolidated" | "phase-error" | "mesh-dispatch";
+// Serialise all logForgeEvent writes so concurrent async callers (self-eval,
+// auto-correction) don't race on the read-modify-write cycle and lose entries.
+let _forgeEventChain = Promise.resolve();
+async function logForgeEvent(kind: ForgeEventKind | string, note?: string, extra?: Record<string, unknown>) {
   const sceLevels = sce88Tag(kind);
-  try {
-    const path = "C:\\Xova\\memory\\forge_events.jsonl";
-    let existing = "";
-    try { existing = await invoke<string>("xova_read_file", { path }); } catch {}
-    const entry = {
-      ts: Date.now(), kind,
-      ...(sceLevels.length > 0 ? { sce88_levels: sceLevels } : {}),
-      ...(note !== undefined ? { note } : {}),
-      ...(extra ?? {}),
-    };
-    const next = (existing.endsWith("\n") || existing === "" ? existing : existing + "\n") + JSON.stringify(entry) + "\n";
-    // Cap at last 500 lines to keep file bounded.
-    const lines = next.split("\n").filter(Boolean);
-    const trimmed = (lines.length > 500 ? lines.slice(-500) : lines).join("\n") + "\n";
-    await invoke("xova_write_file", { path, content: trimmed });
-  } catch { /* best-effort */ }
+  _forgeEventChain = _forgeEventChain.then(async () => {
+    try {
+      const path = "C:\\Xova\\memory\\forge_events.jsonl";
+      let existing = "";
+      try { existing = await invoke<string>("xova_read_file", { path }); } catch {}
+      const entry = {
+        ts: Date.now(), kind,
+        ...(sceLevels.length > 0 ? { sce88_levels: sceLevels } : {}),
+        ...(note !== undefined ? { note } : {}),
+        ...(extra ?? {}),
+      };
+      const next = (existing.endsWith("\n") || existing === "" ? existing : existing + "\n") + JSON.stringify(entry) + "\n";
+      const lines = next.split("\n").filter(Boolean);
+      const trimmed = (lines.length > 500 ? lines.slice(-500) : lines).join("\n") + "\n";
+      await invoke("xova_write_file", { path, content: trimmed });
+    } catch { /* best-effort */ }
+  }).catch(() => {});
 }
 
 function searchRecall(idx: RecallEntry[], query: string, limit = 4, minScore = 1): RecallEntry[] {
@@ -161,6 +166,8 @@ function stripImpersonation(text: string): string {
   }
   // 3. Drop a leading "Xova:" prefix she sometimes adds to her own line.
   text = text.replace(/^(?:🎙\s*)?Xova\s*:\s*/iu, "");
+  // 4. Drop a leading "Forge:" prefix the 3B model sometimes leaks.
+  text = text.replace(/^(?:🔨\s*)?Forge\s*:\s*/iu, "");
   return text.trim();
 }
 
@@ -189,13 +196,14 @@ function compressForJarvisFastPath(text: string, shouldUseFullPipeline = false):
   return kept;
 }
 
-/** Mirror of stripImpersonation, but for Jarvis replies — cuts fake "Xova:" blocks. */
+/** Mirror of stripImpersonation, but for Jarvis replies — cuts fake "Xova:" and "Forge:" blocks. */
 function stripJarvisImpersonation(text: string): string {
   const xovaLineMatch = text.match(/(?:^|\n)\s*(?:🎙\s*)?Xova\s*:/i);
   if (xovaLineMatch && xovaLineMatch.index !== undefined) {
     text = text.slice(0, xovaLineMatch.index);
   }
   text = text.replace(/^(?:🎙\s*)?Jarvis\s*:\s*/i, "");
+  text = text.replace(/^(?:🔨\s*)?Forge\s*:\s*/i, "");
   return text.trim();
 }
 
@@ -208,8 +216,10 @@ function App() {
   const [busyTask, setBusyTask] = useState<TaskType | null>(null);
   const [isBusy, setIsBusy] = useState(false);
   const [dockTab, setDockTab] = useState<"camera" | "feed" | "phones" | "memory" | "navigator" | null>(null);
+  const [chatMode, setChatMode] = useState<"xova" | "team">("xova");
   const [viewportMode, setViewportMode] = useState<"desktop" | "phone" | "tablet">("desktop");
   const [jarvisSpokeAt, setJarvisSpokeAt] = useState<number>(0);
+  const [jarvisSpoke, setJarvisSpoke] = useState<boolean>(false);
   const [dragOver, setDragOver] = useState(false);
   const [sessionList, setSessionList] = useState<string[]>([]);
   const [currentSession, setCurrentSession] = useState<string | null>(null);
@@ -280,8 +290,10 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [banterEnabled, setBanterEnabled] = useState<boolean>(true);
+  const [meshFlags, setMeshFlags] = useState<MeshFlags>(DEFAULT_MESH_FLAGS);
   // Hydrate banter pref from disk so the toggle in Settings persists.
   useEffect(() => { loadMemory<boolean>("banter_enabled").then((v) => { if (typeof v === "boolean") setBanterEnabled(v); }).catch(() => {}); }, []);
+  useEffect(() => { loadMeshFlags().then(setMeshFlags).catch(() => {}); }, []);
   const lastUserActivityRef = useRef<number>(Date.now());
   const idleFiredAtRef = useRef<number>(0);
   // Watch messages for the most-recent user write and bump the idle timer.
@@ -338,7 +350,7 @@ function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
-  const [jarvisRunning, setJarvisRunning] = useState<boolean>(true);
+  const [jarvisRunning, setJarvisRunning] = useState<boolean>(false);
   const [screenWatchActive, setScreenWatchActive] = useState<boolean>(false);
   const screenWatchTimerRef = useRef<number | null>(null);
   const screenWatchSeqRef = useRef<number>(0);
@@ -350,13 +362,23 @@ function App() {
       try {
         const raw = await invoke<string>("xova_status");
         const parsed = JSON.parse(raw);
-        if (!cancelled) setJarvisRunning(!!parsed.jarvis_running);
+        if (!cancelled) setJarvisRunning(!!parsed.jarvis?.alive);
       } catch {}
     };
     tick();
     const h = window.setInterval(tick, 5000);
     return () => { cancelled = true; window.clearInterval(h); };
   }, []);
+  // Auto-clear jarvisSpoke 8s after Jarvis last spoke. Without this timer
+  // the listening animation in StatusBar stays on indefinitely if no render
+  // fires within 8s to recompute the prop.
+  useEffect(() => {
+    if (jarvisSpokeAt === 0) return;
+    setJarvisSpoke(true);
+    const t = window.setTimeout(() => setJarvisSpoke(false), 8000);
+    return () => window.clearTimeout(t);
+  }, [jarvisSpokeAt]);
+
   const [ollamaSettings, setOllamaSettings] = useState<OllamaSettings>(DEFAULT_SETTINGS);
   useEffect(() => { loadOllamaSettings().then(setOllamaSettings).catch(() => {}); }, []);
 
@@ -383,6 +405,20 @@ function App() {
   const pushActivity = useCallback((line: string) => {
     const ts = new Date().toLocaleTimeString();
     setActivity((prev) => [...prev.slice(-200), `[${ts}] ${line}`]);
+  }, []);
+  // Render a "Xova → Jarvis: ..." bubble in the main chat so Adam can SEE
+  // every outbound message Xova sends to Jarvis, not just the eventual reply.
+  // Used by autonomous paths (banter, Xova LLM tool calls) where the question
+  // would otherwise be invisible. Direct addressed-to-jarvis paths skip this
+  // because Adam already typed (and sees) the message himself.
+  const pushJarvisOutbound = useCallback((text: string) => {
+    const ts = Date.now();
+    setMessages((prev) => [...prev, {
+      id: `xova-to-jarvis-${ts}-${Math.random().toString(36).slice(2,5)}`,
+      role: "xova",
+      ts,
+      text: `→ jarvis: ${text}`,
+    }]);
   }, []);
   // Wire the stable ref so the long-lived idle interval can call pushActivity.
   useEffect(() => { pushActivityRef.current = pushActivity; }, [pushActivity]);
@@ -576,6 +612,8 @@ function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const saveTimer = useRef<number | null>(null);
   const cancelledRef = useRef(false);
+  const lastConsolidatedAtRef = useRef(0);
+  const recentTextsRef = useRef<Array<{ text: string; ts: number }>>([]);
 
   const onStop = useCallback(() => {
     cancelledRef.current = true;
@@ -626,7 +664,7 @@ function App() {
       try {
         const reply = await ollamaChat([
           { role: "system", content: persona },
-          { role: "user", content: `Time of day: ${partOfDay}. Recent chat:\n${recentLines}\n\nMake your idle remark.` },
+          { role: "user", content: `Current date/time: ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Brisbane" })}. Time of day: ${partOfDay}. Recent chat:\n${recentLines}\n\nMake your idle remark.` },
         ], undefined, true /* disableTools — idle remark must be plain text */);
         if (cancelled) return;
         const text = stripImpersonation((reply.type === "content" ? reply.text : "").trim().replace(/^["']|["']$/g, ""));
@@ -640,6 +678,9 @@ function App() {
   }, [banterEnabled, hydrated]);
   // Stable ref to pushActivity for use inside the long-lived idle interval.
   const pushActivityRef = useRef<((line: string) => void) | null>(null);
+  // Stable ref to onSend so the 2s inbox bridge effect (dep=[hydrated]) always
+  // calls the latest version rather than the stale closure from hydration time.
+  const onSendRef = useRef<((text: string) => Promise<void>) | null>(null);
 
   // Debounced save back to disk on any tracked-state change (only after hydration).
   // Cap messages at MAX_PERSISTED_MESSAGES to keep session.json bounded; older
@@ -682,6 +723,10 @@ function App() {
   // xova_chat_inbox.json; we surface it as a "🤖 jarvis asks" user message,
   // run it through Xova's LLM, and surface the reply.
   const lastJarvisAskTs = useRef<number>(Date.now());
+  // AUDIT-2-014: map of corrId → bubbleId for in-flight forge asks.
+  // When the forge reply arrives we update the queued bubble in place
+  // rather than appending a new one.
+  const forgePendingBubbles = useRef<Map<string, string>>(new Map());
 
   // Reminders poller — every 30s check reminders.json for entries past fire_ts.
   // Fire a Windows toast for each, mark fired=true, persist back.
@@ -744,17 +789,57 @@ function App() {
       // Jarvis reply
       try {
         const raw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\voice_inbox.json" });
-        const parsed = JSON.parse(raw) as { role?: string; text?: string; ts?: number };
+        const parsed = JSON.parse(raw) as { role?: string; text?: string; to?: string; ts?: number; correlation_id?: string };
         if (parsed && typeof parsed.ts === "number" && parsed.ts > lastVoiceTs.current && typeof parsed.text === "string") {
           lastVoiceTs.current = parsed.ts;
-          if (!cancelled) {
-            setMessages((prev) => [...prev, {
-              id: `voice-${parsed.ts}`,
-              role: "xova",
-              ts: parsed.ts!,
-              text: stripJarvisImpersonation(parsed.text!),
-            }]);
-            setJarvisSpokeAt(Date.now());
+          const recipient = (parsed.to ?? "").toLowerCase();
+          const parsedRole = (parsed.role ?? "").toLowerCase();
+          // Suppress Jarvis→Forge multi-turn relay entries from the user's chat.
+          // These are internal bridge traffic (jarvis replying to forge) and
+          // forge_listener re-routes them — the user doesn't need to see them.
+          const isJarvisToForge = (parsedRole === "jarvis" || parsedRole === "xova") && recipient === "forge";
+          if (!cancelled && !isJarvisToForge) {
+            const cleaned = stripJarvisImpersonation(parsed.text!);
+            // Forge reply: display as "🔨 forge" via id prefix.
+            const isForgeBubble = parsedRole === "forge";
+            const isAbsorbBubble = parsedRole === "absorb";
+            const display = (isForgeBubble || isAbsorbBubble)
+              ? cleaned
+              : recipient === "xova" ? `→ xova: ${cleaned}` : cleaned;
+            const _bSuffix = Math.random().toString(36).slice(2, 7);
+            const bubbleId = isForgeBubble
+              ? `forge-reply-${parsed.ts}_${_bSuffix}`
+              : isAbsorbBubble
+                ? `absorb-finding-${parsed.ts}_${_bSuffix}`
+                : `voice-${parsed.ts}_${_bSuffix}`;
+            // AUDIT-2-014: if this forge reply matches a pending queued bubble,
+            // update that bubble in place instead of appending a new one.
+            if (isForgeBubble && parsed.correlation_id) {
+              const pendingId = forgePendingBubbles.current.get(parsed.correlation_id);
+              if (pendingId) {
+                forgePendingBubbles.current.delete(parsed.correlation_id);
+                setMessages((prev) => prev.map((m) =>
+                  m.id === pendingId
+                    ? { ...m, id: bubbleId, ts: parsed.ts!, text: display }
+                    : m
+                ));
+              } else {
+                setMessages((prev) => [...prev, {
+                  id: bubbleId,
+                  role: "xova",
+                  ts: parsed.ts!,
+                  text: display,
+                }]);
+              }
+            } else {
+              setMessages((prev) => [...prev, {
+                id: bubbleId,
+                role: "xova",
+                ts: parsed.ts!,
+                text: display,
+              }]);
+            }
+            if (!isForgeBubble && !isAbsorbBubble) setJarvisSpokeAt(Date.now());
           }
         }
       } catch { /* file missing — fine */ }
@@ -783,7 +868,7 @@ function App() {
       //   - anything else → render as 🛰 external asks (mostly defensive).
       try {
         const raw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\xova_chat_inbox.json" });
-        const parsed = JSON.parse(raw) as { from?: string; text?: string; ts?: number };
+        const parsed = JSON.parse(raw) as { from?: string; text?: string; ts?: number; correlation_id?: string };
         if (parsed && typeof parsed.ts === "number" && parsed.ts > lastJarvisAskTs.current && typeof parsed.text === "string") {
           lastJarvisAskTs.current = parsed.ts;
           if (!cancelled) {
@@ -807,9 +892,43 @@ function App() {
                 // confabulates ("Jarvis is from Google", "I run on T5", etc.).
                 // Senders are typically Jarvis (askXova tool) or Claude (this
                 // exact path during dev). Keep the prompt tight and factual.
-                const fromLabel = (parsed as { from?: string }).from === "claude" ? "the Claude Code session that's helping Adam build you"
-                                : (parsed as { from?: string }).from === "jarvis" ? "your teammate Jarvis"
+                const senderRaw = (parsed as { from?: string }).from ?? "";
+                const fromLower = senderRaw.toLowerCase();
+                const fromLabel = fromLower === "claude" ? "the Claude Code session that's helping Adam build you"
+                                : fromLower === "jarvis" ? "your teammate Jarvis"
                                 : "your teammate";
+                // Addressee directive — without this Xova writes "Sure, Adam,
+                // here's the answer..." even when Jarvis asked. Bug #13.
+                const peerName = fromLower === "jarvis" ? "Jarvis"
+                               : fromLower === "claude" || fromLower === "forge" ? "Forge"
+                               : senderRaw || "your teammate";
+                const addressee =
+                  `IMPORTANT: You are replying to ${peerName}, NOT to Adam. Address ${peerName} by name. ` +
+                  `Do NOT begin with "Sure", "Hey Adam", or anything aimed at the user — this is a peer-to-peer AI exchange.`;
+                // Short-circuit for time/date — return real Brisbane clock, no LLM needed.
+                // The 3b model hallucinates dates even with a system-prompt anchor.
+                const questionLower = (parsed.text ?? "").toLowerCase();
+                if (/\b(time|date|day|clock)\b/.test(questionLower)) {
+                  const realNow = new Date().toLocaleString("en-AU", {
+                    timeZone: "Australia/Brisbane", dateStyle: "full", timeStyle: "medium",
+                  });
+                  const shortText = `The current date and time in Brisbane is ${realNow}.`;
+                  const scDisplay = fromLower === "jarvis" ? `→ jarvis: ${shortText}`
+                                  : fromLower === "claude" || fromLower === "forge" ? `→ forge: ${shortText}`
+                                  : senderRaw ? `→ ${senderRaw}: ${shortText}` : shortText;
+                  if (!cancelled) {
+                    setMessages((prev) => [...prev, {
+                      id: `xova-tells-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+                      role: "xova", ts: Date.now(), text: scDisplay,
+                    }]);
+                  }
+                  await invoke("xova_write_file", {
+                    path: "C:\\Xova\\memory\\xova_chat_outbox.json",
+                    content: JSON.stringify({ from: "xova", text: shortText, in_reply_to_ts: parsed.ts, ...(parsed.correlation_id ? { correlation_id: parsed.correlation_id } : {}), ts: Date.now() }),
+                  });
+                  return;
+                }
+
                 const reply = await ollamaChat([
                   { role: "system", content:
                     "You are Xova, Adam Snellman's sovereign desktop AI agent. " +
@@ -817,19 +936,28 @@ function App() {
                     "Your teammate Jarvis is a Python voice butler running as a separate pythonw daemon. " +
                     "You are part of Adam's Recursive Field Framework (github.com/wizardaax). " +
                     `You're answering a question from ${fromLabel} via the JSON file bridge at C:\\Xova\\memory\\xova_chat_inbox.json. ` +
+                    addressee + " " +
                     "Be brief, factual, plain text only — one or two sentences. " +
-                    "Do NOT invent facts about yourself. If you don't know something specific (you almost never know real-time facts about your own runtime), say so."
+                    "Do NOT invent facts about yourself. If you don't know something specific, say so. " +
+                    `CURRENT DATE/TIME: ${new Date().toLocaleString("en-AU", { timeZone: "Australia/Brisbane" })}.`
                   },
                   { role: "user", content: parsed.text! },
                 ], undefined, true /* disableTools — bridge wants plain text */);
                 const text = stripImpersonation(reply.type === "content" ? reply.text : "(non-text response)");
                 if (!cancelled) {
-                  setMessages((prev) => [...prev, { id: `xova-tells-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text }]);
+                  // Prefix the bubble so Adam sees the conversation chain:
+                  //    "🤖 jarvis asks: ..."
+                  //    "→ jarvis: ..." (Xova's reply, addressed)
+                  // instead of an unaddressed reply that reads like it's for him.
+                  const display = fromLower === "jarvis" ? `→ jarvis: ${text}`
+                                : fromLower === "claude" || fromLower === "forge" ? `→ forge: ${text}`
+                                : senderRaw ? `→ ${senderRaw}: ${text}` : text;
+                  setMessages((prev) => [...prev, { id: `xova-tells-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: display }]);
                 }
                 // Write back so Jarvis can pick it up
                 await invoke("xova_write_file", {
                   path: "C:\\Xova\\memory\\xova_chat_outbox.json",
-                  content: JSON.stringify({ from: "xova", text, in_reply_to_ts: parsed.ts, ts: Date.now() }),
+                  content: JSON.stringify({ from: "xova", text, in_reply_to_ts: parsed.ts, ...(parsed.correlation_id ? { correlation_id: parsed.correlation_id } : {}), ts: Date.now() }),
                 });
               } catch (e) {
                 pushActivity(`xova reply to jarvis failed: ${e}`);
@@ -874,7 +1002,7 @@ function App() {
           if (!cancelled) {
             pushActivity(`${parsed.from ?? "external"} → /${parsed.text.replace(/^\//, "")}`);
             // Defer to give state cursor write a chance to settle, then dispatch
-            setTimeout(() => onSend(parsed.text!), 50);
+            setTimeout(() => onSendRef.current?.(parsed.text!), 50);
           }
         }
       } catch { /* file missing — fine */ }
@@ -894,6 +1022,7 @@ function App() {
   }, []);
 
   const runDispatch = useCallback(async (taskType: TaskType, args: Record<string, unknown> = {}) => {
+    if (busyTask) return; // prevent concurrent dispatch from double-click
     setBusyTask(taskType);
     pushTerminal(`$ snell-vern mesh --dispatch ${taskType} ${JSON.stringify(args)}`);
     pushActivity(`dispatch start: ${taskType} ${JSON.stringify(args)}`);
@@ -931,6 +1060,15 @@ function App() {
   const onSend = useCallback(async (text: string) => {
     const userMsg: ChatMessage = { id: `u-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "user", text, ts: Date.now() };
     setMessages((prev) => [...prev, userMsg]);
+
+    // Duplicate-text guard: drop if the same text was processed within the last 5s.
+    // Prevents double-processing when a typed message and a voice transcript of the
+    // same phrase arrive via separate paths (typed onSend + voice_user_inbox poller).
+    const _now = Date.now();
+    recentTextsRef.current = recentTextsRef.current.filter((e) => _now - e.ts < 5000);
+    const _trimmed = text.trim();
+    if (recentTextsRef.current.some((e) => e.text === _trimmed)) return;
+    recentTextsRef.current.push({ text: _trimmed, ts: _now });
 
     // If the user addresses Jarvis directly ("jarvis ...", "hi jarvis", "hey
     // jarvis"), route the entire message to Jarvis without going through
@@ -1016,6 +1154,8 @@ function App() {
     if (banterMatch) {
       const topic = banterMatch[1]?.trim() || "your respective roles and how you work as a team";
       pushActivity(`banter starting on: ${topic}`);
+      cancelledRef.current = false;
+      setIsBusy(true);
       let lastQuestion = `Jarvis here. Let's chat about ${topic}. What's your take, Xova?`;
       // Round 1: Jarvis opens (we just push his line as a 🎙 jarvis bubble),
       //   Xova answers via ollamaChat directly (no bridge needed; we're already inside Xova).
@@ -1043,12 +1183,22 @@ function App() {
         // longer messages and never replies). Jarvis already has the topic from
         // the daemon's persona; he doesn't need Xova's full R1 reasoning replayed.
         const xQuestion = `Jarvis, your take on ${topic.slice(0, 40)}?`;
+        pushJarvisOutbound(xQuestion);
         await invoke("xova_ask_jarvis", { text: xQuestion });
         // Jarvis's reply will land via voice_inbox poller naturally.
         pushActivity(`banter R2: short question sent to Jarvis (${xQuestion.length}c, fast-path)`);
 
-        // R3 closer: wait long enough for fast-path reply (typical 2-5s, allow margin).
-        await new Promise((r) => setTimeout(r, 12000));
+        // R3 closer: poll for Jarvis reply (fast-path ~2-5s); stop early if it arrives.
+        // Falls through after 12s max so R3 still fires even if Jarvis is slow/offline.
+        const _banterCountBefore = messagesRef.current.filter((m) => m.id.startsWith("voice-")).length;
+        await new Promise<void>((res) => {
+          let _elapsed = 0;
+          const _iv = setInterval(() => {
+            _elapsed += 300;
+            const newVoice = messagesRef.current.filter((m) => m.id.startsWith("voice-")).length;
+            if (newVoice > _banterCountBefore || _elapsed >= 12000) { clearInterval(_iv); res(); }
+          }, 300);
+        });
         const r3 = await ollamaChat([
           { role: "system", content: "You are Xova wrapping up a brief team conversation with Jarvis about " + topic + ". One short sentence in your own voice. No 'Jarvis:' line." },
           { role: "user", content: "Close the conversation warmly." },
@@ -1058,6 +1208,8 @@ function App() {
         pushActivity("banter complete");
       } catch (e) {
         pushActivity(`banter error: ${e instanceof Error ? e.message : String(e)}`);
+      } finally {
+        setIsBusy(false);
       }
       return;
     }
@@ -1193,7 +1345,7 @@ function App() {
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
           text: names.length === 0
             ? "no templates yet — save one with /template-save <name> <prompt>"
-            : "templates:\n" + names.map((n) => `  /template ${n}  → ${tpls[n].slice(0, 60)}${tpls[n].length > 60 ? "…" : ""}`).join("\n"),
+            : "templates:\n" + names.map((n) => { const t = tpls[n]; if (t.length <= 80) return `  /template ${n}  → ${t}`; const cut = t.lastIndexOf(' ', 80); return `  /template ${n}  → ${t.slice(0, cut > 0 ? cut : 80)}…`; }).join("\n"),
         }]);
       } catch (e) { pushActivity(`templates failed: ${e}`); }
       return;
@@ -1417,12 +1569,12 @@ function App() {
         const raw = await invoke<string>("xova_status");
         const parsed = JSON.parse(raw);
         const lines = ["online:"];
-        if (parsed.xova) lines.push("  ✓ xova");
-        if (parsed.jarvis_running) lines.push("  ✓ jarvis"); else lines.push("  ✗ jarvis");
-        if (parsed.ollama_running) lines.push("  ✓ ollama"); else lines.push("  ✗ ollama");
-        if (parsed.mesh_connected) lines.push("  ✓ mesh"); else lines.push("  ✗ mesh");
-        if (parsed.gpu_free_mb !== undefined) lines.push(`  gpu free: ${parsed.gpu_free_mb} MB`);
-        if (parsed.model) lines.push(`  model: ${parsed.model}`);
+        lines.push("  ✓ xova");
+        if (parsed.jarvis?.alive) lines.push("  ✓ jarvis"); else lines.push("  ✗ jarvis");
+        if (parsed.ollama?.alive) lines.push("  ✓ ollama"); else lines.push("  ✗ ollama");
+        if (parsed.gpu?.free_mb !== undefined) lines.push(`  gpu free: ${parsed.gpu.free_mb} MB`);
+        const loaded = parsed.ollama?.loaded ?? [];
+        if (loaded.length > 0) lines.push(`  model: ${loaded.map((m: { name: string }) => m.name).join(", ")}`);
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: lines.join("\n") }]);
       } catch (e) {
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `status unavailable: ${e instanceof Error ? e.message : String(e)}` }]);
@@ -2334,9 +2486,9 @@ Live research pipelines (in repo, runnable):
           const content = await invoke<string>("xova_read_file", { path });
           const trimmed = content.length > 8000 ? content.slice(0, 8000) + "\n\n[…truncated, full file at " + path + "]" : content;
           const fence = name.endsWith(".py") ? "```python\n" : (name.endsWith(".md") ? "" : "```\n");
-          const close = fence ? (fence === "" ? "" : "\n```") : "";
+          const close = fence ? "\n```" : "";
           setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
-            text: `${fence === "" ? `# ${name}\n\n` : ""}${fence}${trimmed}${close}`,
+            text: `${!fence ? `# ${name}\n\n` : ""}${fence}${trimmed}${close}`,
           }]);
         }
       } catch (e) {
@@ -2359,7 +2511,7 @@ Live research pipelines (in repo, runnable):
     if (slash === "/reminders" || slash === "/reminder-list") {
       try {
         const raw = await invoke<string>("xova_reminders_list", {});
-        let items: any[] = [];
+        let items: any = [];
         try { items = JSON.parse(raw); if (!Array.isArray(items)) items = items?.reminders ?? []; } catch {}
         if (items.length === 0) {
           setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
@@ -2568,10 +2720,12 @@ Live research pipelines (in repo, runnable):
       }
       return;
     }
-    // /standing-facts — show what's in xova_standing_facts.json (the unified facts pool).
-    if (slash === "/standing-facts" || slash === "/facts" || slash === "/known") {
+    // /standing-facts — show what's in xova_sync_facts.json (written by /sync-facts).
+    // Kept separate from xova_standing_facts.json which /consolidate writes as a
+    // string[] — different formats, different files, no mutual clobbering (HIGH-3 fix).
+    if (slash === "/standing-facts" || slash === "/known") {
       try {
-        const raw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\xova_standing_facts.json" });
+        const raw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\xova_sync_facts.json" });
         const d = JSON.parse(raw);
         const fmt = (label: string, arr: string[], limit = 12) => {
           const head = arr.slice(0, limit).map(s => `  · ${s.slice(0, 130)}`).join("\n");
@@ -2587,7 +2741,7 @@ Live research pipelines (in repo, runnable):
         }]);
       } catch (e) {
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
-          text: `no standing facts yet (run \`/sync-facts\` first): ${String(e).slice(0, 200)}`,
+          text: `no sync facts yet — run \`/sync-facts\` first (reads Jarvis SQLite → xova_sync_facts.json): ${String(e).slice(0, 200)}`,
         }]);
       }
       return;
@@ -3632,6 +3786,57 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       });
     });
 
+    // Short-circuit: "ask jarvis ..." / "tell jarvis ..." → write directly to
+    // jarvis_inbox.json with structured schema. Bypasses LLM entirely so the
+    // message always reaches Jarvis regardless of tool-call reliability.
+    const askJarvisMatch = text.match(/(?:^|xova[,\s]+)(?:ask|tell)\s+jarvis[,\s]+(.+)/i);
+    if (askJarvisMatch) {
+      const question = askJarvisMatch[1].trim();
+      const corrId = `xova_${Date.now()}`;
+      await invoke("xova_write_file", {
+        path: "C:\\Xova\\memory\\jarvis_inbox.json",
+        content: JSON.stringify({ intent: "ask", from: "xova", to: "jarvis", text: question, correlation_id: corrId, ts: Date.now() }),
+      });
+      setMessages((prev) => [...prev, {
+        id: `x-jarvis-ask-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        role: "xova", ts: Date.now(),
+        text: `Asking Jarvis: ${question}`,
+      }]);
+      return;
+    }
+
+    // Short-circuit: "ask forge ..." / "tell forge ..." → write directly to
+    // forge_inbox.json. forge_listener.py invokes claude --print and replies
+    // via voice_inbox.json (role="forge") which surfaces as 🔨 forge bubble.
+    const askForgeMatch = text.match(/(?:^|xova[,\s]+)(?:ask|tell)\s+forge[,:\s]+(.+)/i);
+    if (askForgeMatch) {
+      const question = askForgeMatch[1].trim();
+      const corrId = `xova_${Date.now()}`;
+      const forgeModeNow = meshFlags.forge_mode ?? "off";
+      if (forgeModeNow === "off") {
+        setMessages((prev) => [...prev, {
+          id: `x-forge-off-${Date.now()}`,
+          role: "xova", ts: Date.now(),
+          text: `Forge bridge is off. Enable it in ⚙ Settings → Forge bridge.`,
+        }]);
+      } else {
+        await invoke("xova_write_file", {
+          path: "C:\\Xova\\memory\\forge_inbox.json",
+          content: JSON.stringify({ intent: "ask", from: "xova", to: "forge", text: question, correlation_id: corrId, ts: Date.now() }),
+        });
+        const modeNote = forgeModeNow === "queue" ? " (queued — Forge offline)" : "";
+        // AUDIT-2-014: use corrId in the bubble id so we can locate it on reply.
+        const forgeBubbleId = `x-forge-ask-${corrId}`;
+        forgePendingBubbles.current.set(corrId, forgeBubbleId);
+        setMessages((prev) => [...prev, {
+          id: forgeBubbleId,
+          role: "xova", ts: Date.now(),
+          text: `Asking Forge${modeNote}: ${question}`,
+        }]);
+      }
+      return;
+    }
+
     if (matched) {
       const numMatch = text.match(/\b(\d+)\b/);
       const args = numMatch ? { n: parseInt(numMatch[1], 10) } : {};
@@ -3698,12 +3903,14 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
             return `[${h.session} · ${who} · ${when}] ${snippet}`;
           }).join("\n")
         : "";
-      const systemContent = baseSystem + factsBlock + recallBlock;
+      const nowStr = new Date().toLocaleString("en-AU", { timeZone: "Australia/Brisbane" });
+      const systemContent = baseSystem + `\n\nCURRENT DATE/TIME: ${nowStr}` + factsBlock + recallBlock;
       if (recallHits.length > 0) pushActivity(`recall: injected ${recallHits.length} past message${recallHits.length === 1 ? "" : "s"}`);
       // Auto-consolidate every ~40 messages so Xova keeps learning. Fired async,
       // doesn't block the reply. Compares msg count to last threshold so it
       // only fires once per crossing, not every single message after 40.
-      if (messages.length >= 40 && messages.length % 40 === 0) {
+      if (messages.length >= 40 && messages.length % 40 === 0 && messages.length !== lastConsolidatedAtRef.current) {
+        lastConsolidatedAtRef.current = messages.length;
         consolidateMemory(messages).catch(() => {});
       }
 
@@ -3832,6 +4039,12 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           return;
         }
         if (result.type === "tool_calls") {
+          // HIGH-7 fix: clear any streaming preamble from the placeholder before
+          // tool dispatch — without this the partial tokens sit visible for the
+          // entire tool execution duration, then get overwritten by finalText.
+          setMessages((prev) => prev.map((m) =>
+            m.id === placeholderId ? { ...m, text: "…", ts: Date.now() } : m
+          ));
           const toolResults: string[] = [];
           for (const call of result.calls) {
             if (cancelledRef.current) {
@@ -3930,9 +4143,13 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
                 }
               } catch {}
             } else if (fn === "xova_vision") {
-              await invoke<string>("xova_computer", { action: JSON.stringify({ cmd: "screenshot" }) });
-              await new Promise(r => setTimeout(r, 500));
-              toolResult = await invoke<string>("xova_vision", { imagePath: args.image_path || "C:\\Xova\\memory\\screen.png", prompt: args.prompt || null });
+              // Only take a fresh screenshot when the model didn't specify an image_path;
+              // taking one unconditionally would overwrite screen.png with a different frame.
+              if (!args.image_path) {
+                await invoke<string>("xova_computer", { action: JSON.stringify({ cmd: "screenshot" }) });
+                await new Promise(r => setTimeout(r, 500));
+              }
+              toolResult = await invoke<string>("xova_vision", { imagePath: args.imagePath || "C:\\Xova\\memory\\screen.png", prompt: args.prompt || null });
             } else if (fn === "xova_jarvis") {
               pushActivity(`jarvis task: ${args.task}`);
               toolResult = await invoke<string>("xova_jarvis", { task: args.task });
@@ -3977,9 +4194,12 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
                 elevated: args.elevated === true,
               });
             } else if (fn === "xova_ask_jarvis") {
-              toolResult = await invoke<string>("xova_ask_jarvis", {
-                text: compressForJarvisFastPath(String(args.text || "")),
-              });
+              const askText = compressForJarvisFastPath(String(args.text || ""));
+              // Surface the outbound message in chat — without this, Adam
+              // sees Xova's pre-amble and Jarvis's reply but never the
+              // actual question Xova posed (Bug #13 visibility half).
+              pushJarvisOutbound(askText);
+              toolResult = await invoke<string>("xova_ask_jarvis", { text: askText });
             }
             // Cap each tool result at ~4KB before feeding back to the LLM —
             // a 11-repo cascade or large dir listing can otherwise eat the
@@ -4036,6 +4256,9 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       }
     }
   }, [runDispatch, messages, pushTerminal, pushActivity]);
+  // Keep onSendRef current so the long-lived bridge effects can always call
+  // the latest onSend without being in their dep arrays.
+  useEffect(() => { onSendRef.current = onSend; }, [onSend]);
 
   const meshConnected = status !== null && error === null;
   return (
@@ -4068,7 +4291,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           </button>
         </div>
       </div>
-      <StatusBar isBusy={isBusy} jarvisSpoke={Date.now() - jarvisSpokeAt < 8000} phase={phase} />
+      <StatusBar isBusy={isBusy} jarvisSpoke={jarvisSpoke} phase={phase} />
       {dragOver && (
         <div className="absolute inset-0 z-50 bg-emerald-900/30 border-4 border-dashed border-emerald-500 flex items-center justify-center pointer-events-none">
           <div className="text-2xl font-mono text-emerald-300">drop file to upload</div>
@@ -4116,12 +4339,29 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
               title="archive current and start fresh"
             >↻new</button>
           </div>
+          {/* Chat mode tab bar */}
+          <div className="flex border-b border-zinc-900 shrink-0 bg-zinc-950">
+            <button
+              onClick={() => setChatMode("xova")}
+              className={`h-7 px-4 text-[10px] font-mono uppercase tracking-wider transition-colors ${chatMode === "xova" ? "text-emerald-400 border-b-2 border-emerald-600 bg-emerald-950/20" : "text-zinc-500 hover:text-zinc-300"}`}
+            >xova</button>
+            <button
+              onClick={() => setChatMode("team")}
+              className={`h-7 px-4 text-[10px] font-mono uppercase tracking-wider transition-colors ${chatMode === "team" ? "text-emerald-400 border-b-2 border-emerald-600 bg-emerald-950/20" : "text-zinc-500 hover:text-zinc-300"}`}
+            >⬡ mesh</button>
+          </div>
+          {chatMode === "team" ? (
+            <div className="flex-1 min-h-0 flex flex-col">
+              <MeshFeed />
+            </div>
+          ) : (<>
           <ChatFeed
             messages={messages}
             activity={activity}
             onTogglePin={(id) => setMessages((prev) => prev.map((m) => m.id === id ? { ...m, pinned: !m.pinned } : m))}
             onDelete={(id) => setMessages((prev) => prev.filter((m) => m.id !== id))}
             onEdit={(t) => window.dispatchEvent(new CustomEvent("xova-prefill", { detail: { text: t } }))}
+            onReply={(t) => window.dispatchEvent(new CustomEvent("xova-prefill", { detail: { text: t } }))}
             onSuggest={(p) => onSend(p)}
           />
       {/* Slim toolbar — browser-style. ≡ and ⌘ both open the Command Palette;
@@ -4236,6 +4476,8 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
         </div>
       )}
       <CommandBar onSend={onSend} isBusy={isBusy} onStop={onStop} />
+          </>)}
+
         </div>
         <WorkspaceDock activeTab={dockTab} onTab={setDockTab} />
       </div>
@@ -4257,6 +4499,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
         onClose={() => setPaletteOpen(false)}
         items={[
           // Workspace
+          { id: "p-team", group: "Workspace", label: "👥 Team",    hint: "3-way chat (Adam · Xova · Jarvis)", run: () => setChatMode(chatMode === "team" ? "xova" : "team") },
           { id: "p-cam", group: "Workspace", label: "📷 Camera",  hint: "toggle camera tile", run: () => setDockTab(dockTab === "camera" ? null : "camera") },
           { id: "p-fed", group: "Workspace", label: "🔒 Feed",    hint: "toggle feed grid",   run: () => setDockTab(dockTab === "feed" ? null : "feed") },
           { id: "p-phn", group: "Workspace", label: "📱 Phones",  hint: "toggle phone picker",run: () => setDockTab(dockTab === "phones" ? null : "phones") },
@@ -4485,6 +4728,57 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
                 />
                 <span>Idle banter — Xova/Jarvis make a short remark after 5 min of quiet</span>
               </label>
+              <div className="pt-2 border-t border-zinc-900 space-y-1.5">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Forge Bridge</p>
+                <div className="flex items-center gap-2 text-xs text-zinc-300">
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Mode:</span>
+                  {(["off", "live", "queue"] as const).map((m) => (
+                    <button
+                      key={m}
+                      onClick={async () => {
+                        const next = { ...meshFlags, forge_mode: m };
+                        setMeshFlags(next);
+                        try { await saveMeshFlags(next); pushActivity(`forge_mode → ${m}`); } catch {}
+                      }}
+                      className={`px-2 py-0.5 rounded text-[10px] font-mono border transition-colors ${
+                        meshFlags.forge_mode === m
+                          ? "bg-amber-900/40 border-amber-600 text-amber-300"
+                          : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:border-amber-600 hover:text-amber-400"
+                      }`}
+                    >{m}</button>
+                  ))}
+                </div>
+                <span className="block text-[10px] text-zinc-600">
+                  off — disabled · live — forge_listener calls claude --print (20/hr limit) · queue — messages queued for next session
+                </span>
+              </div>
+              <div className="pt-2 border-t border-zinc-900 space-y-1.5">
+                <p className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Cognitive Fleet</p>
+                {(
+                  [
+                    { key: "meshRunnerEnabled", label: "Mesh Runner",      desc: "13-agent cycle every 60s" },
+                    { key: "cognitiveEnabled",  label: "Cognitive Cycle",  desc: "agent dispatch + coherence scoring" },
+                    { key: "evolutionEnabled",  label: "Evolution Engine", desc: "self-improve every 5 cycles" },
+                  ] as { key: keyof MeshFlags; label: string; desc: string }[]
+                ).map(({ key, label, desc }) => (
+                  <label key={key} className="flex items-start gap-2 cursor-pointer text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={meshFlags[key]}
+                      onChange={async (e) => {
+                        const next = { ...meshFlags, [key]: e.target.checked };
+                        setMeshFlags(next);
+                        try { await saveMeshFlags(next); pushActivity(`${label} ${e.target.checked ? "on" : "off"}`); } catch {}
+                      }}
+                      className="mt-0.5 accent-emerald-500"
+                    />
+                    <span>
+                      <span className="text-xs font-mono">{label}</span>
+                      <span className="block text-[10px] text-zinc-500">{desc}</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
               <div className="flex items-center gap-2 pt-2 border-t border-zinc-900">
                 <button
                   onClick={async () => {
