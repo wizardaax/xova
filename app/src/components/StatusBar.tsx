@@ -14,6 +14,12 @@ interface MeshState {
   coherence: number | null;
 }
 
+interface Sce88State {
+  passed: boolean;
+  violations: number;
+  coherence: number;
+}
+
 interface StatusBarProps {
   isBusy: boolean;
   jarvisSpoke: boolean;
@@ -32,6 +38,7 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode, currentModel,
   const [status, setStatus] = useState<Status | null>(null);
   const [mesh, setMesh] = useState<MeshState | null>(null);
   const [forgeBusy, setForgeBusy] = useState(false);
+  const [sce88, setSce88] = useState<Sce88State | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
@@ -91,6 +98,42 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode, currentModel,
     };
     tickMesh();
     const handle = window.setInterval(tickMesh, 10000);
+    return () => { cancelled = true; window.clearInterval(handle); };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const GATE_CMD = `python "C:\\Xova\\plugins\\sce88_gate.py" --context statusbar`;
+    const tickSce88 = async () => {
+      try {
+        // Read coherence from context_broker xova.sce88_status slot
+        let coherence = 0.7;
+        try {
+          const brokerRaw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\context_broker.json" });
+          const broker = JSON.parse(brokerRaw) as Record<string, { value?: unknown }>;
+          const slot = broker["xova.sce88_status"] ?? broker["mesh.sce88_status"];
+          const v = slot?.value;
+          if (typeof v === "object" && v !== null && "coherence" in v && typeof (v as Record<string, unknown>).coherence === "number") {
+            coherence = (v as Record<string, unknown>).coherence as number;
+          } else if (typeof v === "number") {
+            coherence = v;
+          }
+        } catch { /* broker not written yet */ }
+
+        const cmd = `${GATE_CMD} --coherence ${coherence.toFixed(4)}`;
+        const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
+        let stdout = raw;
+        try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout !== undefined) stdout = w.stdout; } catch { /**/ }
+        const gate = JSON.parse(stdout) as { passed?: boolean; violations?: string[]; coherence?: number };
+        if (!cancelled) setSce88({
+          passed:     gate.passed ?? true,
+          violations: (gate.violations ?? []).length,
+          coherence:  gate.coherence ?? coherence,
+        });
+      } catch { /* gate not ready */ }
+    };
+    tickSce88();
+    const handle = window.setInterval(tickSce88, 30_000);
     return () => { cancelled = true; window.clearInterval(handle); };
   }, []);
 
@@ -246,6 +289,22 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode, currentModel,
           >
             <span>⬡</span>
             <span>cycle {mesh.cycles}{mesh.coherence != null ? ` · coh ${mesh.coherence.toFixed(2)}` : ""}</span>
+          </span>
+        </>
+      )}
+      {sce88 && (
+        <>
+          <span className="text-zinc-800">·</span>
+          <span
+            title={sce88.passed
+              ? `SCE-88 passing · coherence ${sce88.coherence.toFixed(3)}`
+              : `SCE-88 ${sce88.violations} violation${sce88.violations !== 1 ? "s" : ""} · coherence ${sce88.coherence.toFixed(3)}`}
+            className={`flex items-center gap-1 uppercase tracking-wider text-[10px] ${
+              sce88.passed ? "text-emerald-400" : "text-red-400"
+            }`}
+          >
+            <span>{sce88.passed ? "🛡" : "⚠"}</span>
+            <span>sce-88{!sce88.passed ? ` ✗${sce88.violations}` : " ✓"}</span>
           </span>
         </>
       )}
