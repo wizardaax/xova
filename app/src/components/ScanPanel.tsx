@@ -16,8 +16,9 @@ export function ScanPanel({ pushTerminal }: { pushTerminal: (l: string) => void 
       for (const repo of repos) {
         const path = REPOS_DIR + "\\" + repo;
         try {
-          const status = await invoke<string>("run_command", { cmd: "git", args: ["status", "--short"], cwd: path });
-          const changes = status.trim();
+          const raw = await invoke<string>("xova_run", { command: "git status --short", cwd: path });
+          const parsed = JSON.parse(raw);
+          const changes = (parsed.stdout ?? "").trim();
           const line = changes ? `⚠ ${repo}: ${changes.split("\n").length} uncommitted changes` : `✓ ${repo}: clean`;
           out.push(line);
           pushTerminal(line);

@@ -1024,6 +1024,7 @@ function App() {
   const runDispatch = useCallback(async (taskType: TaskType, args: Record<string, unknown> = {}) => {
     if (busyTask) return; // prevent concurrent dispatch from double-click
     setBusyTask(taskType);
+    setIsBusy(true);
     pushTerminal(`$ snell-vern mesh --dispatch ${taskType} ${JSON.stringify(args)}`);
     pushActivity(`dispatch start: ${taskType} ${JSON.stringify(args)}`);
     try {
@@ -1054,6 +1055,7 @@ function App() {
       }]);
     } finally {
       setBusyTask(null);
+      setIsBusy(false);
     }
   }, [dispatch, pushTerminal, pushActivity]);
 
@@ -3038,7 +3040,7 @@ Type \`/cycles\`, \`/vault\`, \`/sysinfo\`, \`/sovereign\`, \`/jarvis-status\` f
       return;
     }
     // /repos — list wizardaax repos with their git status (deterministic, mirrors agent-10)
-    if (slash === "/repos" || slash === "/repo-status") {
+    if (slash === "/repo-status") {
       try {
         const result = await invoke<string>("xova_list_repos", {});
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
@@ -3155,7 +3157,7 @@ If any check fails, the swan SVG isn't reaching your viewport — Ctrl+R or full
       return;
     }
     // /sysinfo — Xova's self-awareness: hardware, models, runtime state
-    if (slash === "/sysinfo" || slash === "/system" || slash === "/whoami") {
+    if (slash === "/sysinfo" || slash === "/system") {
       try {
         const raw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\system_info.json" });
         const info = JSON.parse(raw);
@@ -4501,7 +4503,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           // Workspace
           { id: "p-team", group: "Workspace", label: "👥 Team",    hint: "3-way chat (Adam · Xova · Jarvis)", run: () => setChatMode(chatMode === "team" ? "xova" : "team") },
           { id: "p-cam", group: "Workspace", label: "📷 Camera",  hint: "toggle camera tile", run: () => setDockTab(dockTab === "camera" ? null : "camera") },
-          { id: "p-fed", group: "Workspace", label: "🔒 Feed",    hint: "toggle feed grid",   run: () => setDockTab(dockTab === "feed" ? null : "feed") },
+          { id: "p-fed", group: "Workspace", label: "📡 Feed",    hint: "toggle feed grid",   run: () => setDockTab(dockTab === "feed" ? null : "feed") },
           { id: "p-phn", group: "Workspace", label: "📱 Phones",  hint: "toggle phone picker",run: () => setDockTab(dockTab === "phones" ? null : "phones") },
           { id: "p-mem", group: "Workspace", label: "🧠 Memory",  hint: "toggle memory viewer",run: () => setDockTab(dockTab === "memory" ? null : "memory") },
           { id: "p-nav", group: "Workspace", label: "🦢 Navigator", hint: "Time-Travel + Black Swan in-app", run: () => setDockTab(dockTab === "navigator" ? null : "navigator") },

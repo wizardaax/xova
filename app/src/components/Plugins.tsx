@@ -74,11 +74,7 @@ export function Plugins({ pushTerminal }: { pushTerminal: (line: string) => void
     }, 60_000);
 
     try {
-      const output = await invoke<string>("run_command", {
-        cmd: "python",
-        args: [row.entry.path],
-        cwd: PLUGINS_DIR,
-      });
+      const output = await invoke<string>("run_plugin", { name: row.entry.name });
       if (watchdog !== null) {
         window.clearTimeout(watchdog);
         pushTerminal(`  → ${output.slice(0, 200).replace(/\n/g, " ")}`);
