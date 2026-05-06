@@ -40,9 +40,21 @@ import { SmsArchive } from "./SmsArchive";
 import { PhaseHistory } from "./PhaseHistory";
 import { MemoryKeys } from "./MemoryKeys";
 import { FederationPanel } from "./FederationPanel";
+import { ForgeInbox } from "./ForgeInbox";
+import { TestRunner } from "./TestRunner";
+import { SentinelLog } from "./SentinelLog";
+import { VoiceInbox } from "./VoiceInbox";
+import { JarvisHealth } from "./JarvisHealth";
+import { AgiAudit } from "./AgiAudit";
+import { AgentBoard } from "./AgentBoard";
+import { RiemannZeros } from "./RiemannZeros";
+import { ConstraintGuard } from "./ConstraintGuard";
+import { GitLog } from "./GitLog";
+import { EvolutionStages } from "./EvolutionStages";
+import { DriveMatrix } from "./DriveMatrix";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -84,7 +96,19 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "smsarchive",  label: "SMS",         emoji: "💬" },
   { id: "phasehistory",label: "Phases",      emoji: "🌊" },
   { id: "memkeys",     label: "Mem Keys",    emoji: "🗝️" },
-  { id: "federation",  label: "Federation",  emoji: "🌐" },
+  { id: "federation",   label: "Federation",   emoji: "🌐" },
+  { id: "forgeinbox",   label: "Forge Inbox",  emoji: "📥" },
+  { id: "testrunner",   label: "Tests",        emoji: "🧪" },
+  { id: "sentinellog",  label: "Sentinel",     emoji: "👁" },
+  { id: "voiceinbox",   label: "Voice Inbox",  emoji: "🎤" },
+  { id: "jarvishealth", label: "Jarvis Health",emoji: "💚" },
+  { id: "agiaudit",     label: "AGI Audit",    emoji: "🔭" },
+  { id: "agentboard",   label: "Agent Board",  emoji: "📋" },
+  { id: "riemann",      label: "Riemann",      emoji: "∞" },
+  { id: "constraintguard", label: "Constraints", emoji: "🛡" },
+  { id: "gitlog",       label: "Git Log",      emoji: "⎇" },
+  { id: "evostages",    label: "Evo Stages",   emoji: "🧬" },
+  { id: "drivematrix",  label: "Drive Matrix", emoji: "🔢" },
 ];
 
 interface WorkspaceDockProps {
@@ -188,6 +212,18 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "phasehistory"&& <PhaseHistory     onClose={() => onTab(null)} />}
             {activeTab === "memkeys"     && <MemoryKeys       onClose={() => onTab(null)} />}
             {activeTab === "federation"  && <FederationPanel  onClose={() => onTab(null)} />}
+            {activeTab === "forgeinbox"  && <ForgeInbox       onClose={() => onTab(null)} />}
+            {activeTab === "testrunner"  && <TestRunner       onClose={() => onTab(null)} />}
+            {activeTab === "sentinellog" && <SentinelLog      onClose={() => onTab(null)} />}
+            {activeTab === "voiceinbox"  && <VoiceInbox       onClose={() => onTab(null)} />}
+            {activeTab === "jarvishealth"&& <JarvisHealth     onClose={() => onTab(null)} />}
+            {activeTab === "agiaudit"    && <AgiAudit         onClose={() => onTab(null)} />}
+            {activeTab === "agentboard"  && <AgentBoard       onClose={() => onTab(null)} />}
+            {activeTab === "riemann"     && <RiemannZeros     onClose={() => onTab(null)} />}
+            {activeTab === "constraintguard" && <ConstraintGuard onClose={() => onTab(null)} />}
+            {activeTab === "gitlog"      && <GitLog           onClose={() => onTab(null)} />}
+            {activeTab === "evostages"   && <EvolutionStages  onClose={() => onTab(null)} />}
+            {activeTab === "drivematrix" && <DriveMatrix      onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
