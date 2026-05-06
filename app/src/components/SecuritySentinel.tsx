@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-const PY     = "C:\\Users\\adz_7\\AppData\\Local\\Programs\\Python\\Python313\\python.exe";
-const PLUGIN = "C:\\Xova\\plugins\\threat_watch_probe.py";
+const PY           = "C:\\Users\\adz_7\\AppData\\Local\\Programs\\Python\\Python313\\python.exe";
+const PLUGIN       = "C:\\Xova\\plugins\\threat_watch_probe.py";
+const BROWSER_PLUGIN = "C:\\Xova\\plugins\\browser_control.py";
 
 const INTERVAL_NORMAL = 120;  // seconds between scans when clear
 const INTERVAL_ALERT  = 30;   // seconds when watch/alert
@@ -51,6 +52,36 @@ export function SecuritySentinel({ onClose, wideDock, onToggleWide }: {
   const [scanAt, setScanAt]   = useState("");
   const nextRef   = useRef(Date.now() + INTERVAL_NORMAL * 1000);
   const tickRef   = useRef<number | null>(null);
+
+  const [browserSite, setBrowserSite] = useState<"claude" | "grok" | "chatgpt">("claude");
+  const [browserBusy, setBrowserBusy] = useState<string | null>(null);
+  const [browserMsg, setBrowserMsg]   = useState<string | null>(null);
+
+  const browserAction = useCallback(async (action: string) => {
+    setBrowserBusy(action);
+    setBrowserMsg(null);
+    try {
+      const raw = await invoke<string>("xova_run", {
+        command: `"${PY}" "${BROWSER_PLUGIN}" --action ${action} --site ${browserSite}`,
+        cwd: "C:\\Xova", elevated: false,
+      });
+      let stdout = raw;
+      try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout !== undefined) stdout = w.stdout; } catch { /**/ }
+      const r = JSON.parse(stdout.trim()) as { ok: boolean; logged_in?: boolean; url?: string; path?: string; error?: string; needs_login?: boolean; msg?: string };
+      if (!r.ok) {
+        setBrowserMsg(r.needs_login ? "Not logged in — click Open to log in first" : (r.error ?? "error"));
+      } else if (action === "check") {
+        setBrowserMsg(r.logged_in ? `✓ Logged in  (${r.url ?? ""})` : "✗ Not logged in");
+      } else if (action === "open") {
+        setBrowserMsg(r.msg ?? "Browser opened");
+      } else if (action === "screenshot") {
+        setBrowserMsg(`Screenshot saved → ${r.path ?? ""}`);
+      }
+    } catch (e) {
+      setBrowserMsg(String(e));
+    }
+    setBrowserBusy(null);
+  }, [browserSite]);
 
   const scan = useCallback(async () => {
     setScanning(true);
@@ -197,6 +228,47 @@ export function SecuritySentinel({ onClose, wideDock, onToggleWide }: {
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Browser AI launcher */}
+          <div className="rounded border border-zinc-800 bg-zinc-900/30 overflow-hidden">
+            <div className="px-3 py-1.5 border-b border-zinc-800 flex items-center gap-1.5">
+              <span className="text-[9px] uppercase tracking-wider text-zinc-500">🌐 Browser AI</span>
+            </div>
+            <div className="p-2.5 space-y-2">
+              <div className="flex gap-1">
+                {(["claude","grok","chatgpt"] as const).map(s => (
+                  <button key={s} onClick={() => setBrowserSite(s)}
+                    className={`px-2 py-0.5 rounded border text-[9px] transition-colors ${
+                      browserSite === s
+                        ? "bg-emerald-900/40 border-emerald-700 text-emerald-300"
+                        : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-600"
+                    }`}>
+                    {s === "claude" ? "Claude" : s === "grok" ? "Grok" : "ChatGPT"}
+                  </button>
+                ))}
+              </div>
+              <div className="flex gap-1.5">
+                <button onClick={() => browserAction("open")} disabled={!!browserBusy}
+                  className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[9px] text-zinc-300 hover:border-emerald-700 hover:text-emerald-300 disabled:opacity-40 transition-colors">
+                  {browserBusy === "open" ? "opening…" : "🖥 Open"}
+                </button>
+                <button onClick={() => browserAction("check")} disabled={!!browserBusy}
+                  className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[9px] text-zinc-300 hover:border-zinc-500 disabled:opacity-40 transition-colors">
+                  {browserBusy === "check" ? "checking…" : "✓ Check"}
+                </button>
+                <button onClick={() => browserAction("screenshot")} disabled={!!browserBusy}
+                  className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[9px] text-zinc-400 hover:border-zinc-500 disabled:opacity-40 transition-colors"
+                  title="Screenshot">
+                  {browserBusy === "screenshot" ? "…" : "📷"}
+                </button>
+              </div>
+              {browserMsg && (
+                <div className={`text-[9px] leading-relaxed ${browserMsg.startsWith("✓") ? "text-emerald-400" : browserMsg.startsWith("✗") || browserMsg.includes("error") || browserMsg.includes("Not") ? "text-amber-400" : "text-zinc-400"}`}>
+                  {browserMsg}
+                </div>
+              )}
             </div>
           </div>
 
