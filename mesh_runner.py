@@ -145,7 +145,23 @@ def _ucb_update(state: list[dict], idx: int, reward: float) -> None:
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
-FLAGS_PATH = r"C:\Xova\memory\mesh_flags.json"
+FLAGS_PATH        = r"C:\Xova\memory\mesh_flags.json"
+CONTEXT_BROKER    = r"C:\Xova\memory\context_broker.json"
+SCE88_GATE        = r"C:\Xova\plugins\sce88_gate.py"
+
+
+def _write_context_slot(key: str, value: object, agent: str = "mesh") -> None:
+    """Append a slot to context_broker.json via sce88-gate helper subprocess."""
+    try:
+        subprocess.run(
+            [sys.executable, r"C:\Xova\plugins\context_broker.py",
+             "--action", "set", "--key", key,
+             "--value", json.dumps(value, ensure_ascii=False),
+             "--agent", agent],
+            capture_output=True, timeout=5, creationflags=0x08000000,
+        )
+    except Exception:
+        pass
 
 def _read_flags() -> dict:
     try:
@@ -599,6 +615,14 @@ def main() -> None:
                 _ucb_update(ucb_state, goal_idx, reward)
                 ucb_t += 1
                 _save_ucb_state(ucb_state)
+
+                # SCE-88: publish cycle coherence to context_broker for advisory gate
+                _write_context_slot("xova.sce88_status", {
+                    "coherence":   round(result.average_coherence, 4),
+                    "cycle":       cycle_num,
+                    "goal":        goal,
+                    "ts":          time.time(),
+                })
 
             except Exception as exc:
                 _append({

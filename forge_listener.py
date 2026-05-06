@@ -66,6 +66,8 @@ NO_WIN       = 0x08000000
 # Full path to claude.exe — pythonw inherits a minimal PATH that omits npm dirs.
 CLAUDE_EXE   = r"C:\Users\adz_7\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe"
 RATE_LOG     = r"C:\Xova\memory\forge_rate_log.json"  # persisted rate limit timestamps
+SCE88_GATE   = r"C:\Xova\plugins\sce88_gate.py"
+CONTEXT_BROKER_STORE = r"C:\Xova\memory\context_broker.json"
 
 _call_timestamps:    list[float] = []  # wall-time of recent claude --print calls
 _last_inbox_ts:      int = 0
@@ -308,6 +310,40 @@ def _deliver_reply(text: str, from_agent: str, correlation_id: str | None, origi
         _log(f"routed forge->xova: '{text[:60]}'")
 
 
+def _sce88_check(text: str, from_agent: str) -> str:
+    """Run the SCE-88 constraint gate. Returns text (possibly prepended with alert)."""
+    try:
+        # Read current coherence from context_broker xova.sce88_status slot
+        coherence = 0.7
+        try:
+            with open(CONTEXT_BROKER_STORE, "r", encoding="utf-8") as fh:
+                store = json.load(fh)
+            slot = store.get("xova.sce88_status") or store.get("mesh.sce88_status")
+            if isinstance(slot, dict) and "value" in slot:
+                v = slot["value"]
+                if isinstance(v, dict):
+                    coherence = float(v.get("coherence", 0.7))
+                elif isinstance(v, (int, float)):
+                    coherence = float(v)
+        except Exception:
+            pass
+
+        result = subprocess.run(
+            [sys.executable, SCE88_GATE,
+             "--coherence", str(coherence),
+             "--context", f"forge_inbox:{from_agent}"],
+            capture_output=True, text=True, timeout=5, creationflags=NO_WIN,
+        )
+        gate = json.loads(result.stdout.strip()) if result.stdout.strip() else {}
+        if not gate.get("passed", True) and gate.get("violations"):
+            summary = "; ".join(gate["violations"])
+            _log(f"SCE-88 advisory: {summary}")
+            return f"[SCE-88: {summary}] {text}"
+    except Exception as exc:
+        _log(f"SCE-88 gate error (non-blocking): {exc}")
+    return text
+
+
 def _route_inbox(mode: str) -> None:
     """Process new forge_inbox.json messages; invoke claude or queue."""
     global _last_inbox_ts
@@ -348,6 +384,7 @@ def _route_inbox(mode: str) -> None:
         return
 
     _log(f"calling claude --print (calls this hour: {_rate_used() + 1}/{RATE_LIMIT})")
+    text = _sce88_check(text, from_agent)  # SCE-88 advisory gate
     reply_text = _strip_role_prefix(_call_claude(text))  # AUDIT-2-025
     _record_call()
     _log(f"claude replied: '{reply_text[:80]}'")
