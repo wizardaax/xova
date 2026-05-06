@@ -13,9 +13,14 @@ import { EventsLog } from "./EventsLog";
 import { DaemonDashboard } from "./DaemonDashboard";
 import { AgentDispatch } from "./AgentDispatch";
 import { AblationMetrics } from "./AblationMetrics";
+import { EvolutionTracker } from "./EvolutionTracker";
+import { SessionBrowser } from "./SessionBrowser";
+import { PluginEditor } from "./PluginEditor";
+import { PythonRepl } from "./PythonRepl";
+import { SelfEvalChart } from "./SelfEvalChart";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",    label: "Camera",    emoji: "📷" },
@@ -31,6 +36,11 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "daemons",   label: "Daemons",   emoji: "⚙️" },
   { id: "dispatch",  label: "Dispatch",  emoji: "🎯" },
   { id: "ablation",  label: "Ablation",  emoji: "🔬" },
+  { id: "evolution", label: "Evolution", emoji: "🧬" },
+  { id: "sessions",  label: "Sessions",  emoji: "📚" },
+  { id: "editor",    label: "Editor",    emoji: "✏️" },
+  { id: "repl",      label: "REPL",      emoji: "🐍" },
+  { id: "selfeval",  label: "Self-Eval", emoji: "📈" },
 ];
 
 interface WorkspaceDockProps {
@@ -106,7 +116,12 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "events"    && <EventsLog      onClose={() => onTab(null)} />}
             {activeTab === "daemons"   && <DaemonDashboard onClose={() => onTab(null)} />}
             {activeTab === "dispatch"  && <AgentDispatch  onClose={() => onTab(null)} />}
-            {activeTab === "ablation"  && <AblationMetrics onClose={() => onTab(null)} />}
+            {activeTab === "ablation"  && <AblationMetrics    onClose={() => onTab(null)} />}
+            {activeTab === "evolution" && <EvolutionTracker  onClose={() => onTab(null)} />}
+            {activeTab === "sessions"  && <SessionBrowser    onClose={() => onTab(null)} />}
+            {activeTab === "editor"    && <PluginEditor      onClose={() => onTab(null)} />}
+            {activeTab === "repl"      && <PythonRepl        onClose={() => onTab(null)} />}
+            {activeTab === "selfeval"  && <SelfEvalChart     onClose={() => onTab(null)} />}
           </div>
         </div>
       )}

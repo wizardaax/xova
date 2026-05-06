@@ -203,7 +203,7 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
             const speaker = isVoiceUser ? "🎙 you" : isUser ? "you" : isVoice ? "🎙 jarvis" : isForgeReply ? "🔨 forge" : isAbsorbFinding ? "🧠 noticed" : "xova";
             const showDay = idx === 0 || dayKey(messages[idx - 1].ts) !== dayKey(m.ts);
             return (
-              <div key={m.id} className="flex flex-col">
+              <div key={m.id} id={m.id} className="flex flex-col">
                 {showDay && (
                   <div className="self-center my-2 text-[10px] font-mono uppercase tracking-wider text-zinc-600 px-3 py-0.5 border border-zinc-800 rounded-full bg-zinc-950">
                     {fmtDay(m.ts)}

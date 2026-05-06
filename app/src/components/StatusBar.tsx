@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 interface Status {
@@ -15,24 +15,32 @@ interface MeshState {
 }
 
 interface StatusBarProps {
-  /** Are we in the middle of a chat turn (Xova thinking)? */
   isBusy: boolean;
-  /** Did Jarvis just speak (within last 8s)? Drives the listening dot. */
   jarvisSpoke: boolean;
-  /** GlyphPhaseEngine state — Xova's runtime coherence per Adam's substrate. */
   phase?: string;
-  /** Forge dispatch mode from mesh_flags.json */
   forgeMode?: "live" | "queue" | "off";
+  currentModel?: string;
+  onModelChange?: (model: string) => void;
+  messageCount?: number;
 }
 
 /**
  * Top-of-window health/state strip. Pulls live state every 5s. Tells you at a
  * glance which side is up and what's loaded on the GPU.
  */
-export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode }: StatusBarProps) {
+export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode, currentModel, onModelChange, messageCount }: StatusBarProps) {
   const [status, setStatus] = useState<Status | null>(null);
   const [mesh, setMesh] = useState<MeshState | null>(null);
   const [forgeBusy, setForgeBusy] = useState(false);
+  const [modelOpen, setModelOpen] = useState(false);
+  const modelMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!modelOpen) return;
+    const handler = (e: MouseEvent) => { if (modelMenuRef.current && !modelMenuRef.current.contains(e.target as Node)) setModelOpen(false); };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [modelOpen]);
 
   useEffect(() => {
     let cancelled = false;
@@ -183,6 +191,27 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode }: StatusBarPr
         <span className={`w-1.5 h-1.5 rounded-full ${dot(ollamaAlive)}`} />
         <span className="uppercase tracking-wider">ollama</span>
       </span>
+      {currentModel && (
+        <>
+          <span className="text-zinc-800">·</span>
+          <div className="relative" ref={modelMenuRef}>
+            <button onClick={() => setModelOpen(v => !v)}
+              className="text-[10px] text-zinc-400 hover:text-emerald-400 border border-zinc-800 hover:border-emerald-700 rounded px-1.5 py-0.5 transition-colors font-mono">
+              {currentModel.split(":")[0]}
+            </button>
+            {modelOpen && (
+              <div className="absolute top-full left-0 mt-1 z-50 bg-zinc-900 border border-zinc-700 rounded shadow-xl min-w-[160px] py-1">
+                {(loaded.length > 0 ? loaded.map(m => m.name) : [currentModel]).map(name => (
+                  <button key={name} onClick={() => { onModelChange?.(name); setModelOpen(false); }}
+                    className={`w-full text-left px-3 py-1.5 text-[11px] font-mono hover:bg-zinc-800 transition-colors ${name === currentModel ? "text-emerald-400" : "text-zinc-300"}`}>
+                    {name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </>
+      )}
       {phase && phase !== "initial" && (
         <>
           <span className="text-zinc-800">·</span>
@@ -255,6 +284,9 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode }: StatusBarPr
             forging
           </span>
         </>
+      )}
+      {messageCount != null && messageCount > 0 && (
+        <span className="text-zinc-700 text-[9px]">{messageCount} msg{messageCount !== 1 ? "s" : ""}</span>
       )}
       <span className="ml-auto text-zinc-700">
         {status ? `updated ${new Date(status.ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}` : "…"}

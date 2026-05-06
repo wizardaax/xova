@@ -227,6 +227,19 @@ def _try_apply_patch(change: dict) -> str:
     if not changes:
         return "no changes specified"
 
+    # Guard: skip patches targeting files that don't exist on disk.
+    # EvolutionEngine proposes phantom paths like "config/observer.yaml" that
+    # never existed — skip them rather than generating spurious errors.
+    if file_:
+        resolved = file_ if os.path.isabs(file_) else os.path.join(AGENTS_DIR, file_)
+        if not os.path.isfile(resolved):
+            _append({
+                "ts": time.time(), "kind": "evo_skip", "agent_id": "EV",
+                "label": "EvolutionEngine",
+                "content": f"skipping patch — target does not exist: {file_} (target={target})",
+            })
+            return f"skipped — target file does not exist: {file_}"
+
     # Write a patch spec file to the patch dir regardless — full provenance.
     os.makedirs(PATCH_DIR, exist_ok=True)
     ts_str = time.strftime("%Y%m%dT%H%M%S")

@@ -10,6 +10,7 @@ import { WorkspaceDock } from "@/components/WorkspaceDock";
 import { CommandPalette, type PaletteItem } from "@/components/CommandPalette";
 import { ControlPanel } from "@/components/ControlPanel";
 import { QuickCapture } from "@/components/QuickCapture";
+import { SearchOverlay } from "@/components/SearchOverlay";
 import { SquaresFour } from "@phosphor-icons/react";
 import { useMesh } from "@/hooks/use-mesh";
 import { TASK_TYPES, type TaskType, saveMemory, loadMemory, ollamaChat, ollamaChatStream, dispatchMesh, cascadeMesh, loadOllamaSettings, saveOllamaSettings, type OllamaSettings, DEFAULT_SETTINGS, loadMeshFlags, saveMeshFlags, type MeshFlags, DEFAULT_MESH_FLAGS } from "@/lib/mesh";
@@ -346,7 +347,7 @@ function App() {
         setPaletteOpen((v) => !v);
       } else if (k === "f") {
         e.preventDefault();
-        window.dispatchEvent(new CustomEvent("xova-prefill", { detail: { text: "/find " } }));
+        setSearchOpen(v => !v);
       } else if (k === "t") {
         e.preventDefault();
         const inputs = newSessionInputsRef.current;
@@ -631,6 +632,7 @@ function App() {
   const [panelOpen, setPanelOpen] = useState(false);
   const [exportToast, setExportToast] = useState("");
   const [notesOpen, setNotesOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const saveTimer = useRef<number | null>(null);
   const cancelledRef = useRef(false);
   const lastConsolidatedAtRef = useRef(0);
@@ -4344,7 +4346,9 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           </button>
         </div>
       </div>
-      <StatusBar isBusy={isBusy} jarvisSpoke={jarvisSpoke} phase={phase} forgeMode={meshFlags.forge_mode} />
+      <StatusBar isBusy={isBusy} jarvisSpoke={jarvisSpoke} phase={phase} forgeMode={meshFlags.forge_mode}
+        currentModel={ollamaSettings.model} messageCount={messages.length}
+        onModelChange={(m) => setOllamaSettings(prev => ({ ...prev, model: m }))} />
       {dragOver && (
         <div className="absolute inset-0 z-50 bg-emerald-900/30 border-4 border-dashed border-emerald-500 flex items-center justify-center pointer-events-none">
           <div className="text-2xl font-mono text-emerald-300">drop file to upload</div>
@@ -4857,6 +4861,8 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
         </div>
       )}
       <QuickCapture open={notesOpen} onClose={() => setNotesOpen(false)} />
+      <SearchOverlay open={searchOpen} messages={messages} onClose={() => setSearchOpen(false)}
+        onJump={(id) => { document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "center" }); }} />
       {exportToast && (
         <div className="fixed bottom-4 right-4 bg-zinc-800 text-zinc-200 px-4 py-2 rounded-lg text-sm font-mono shadow-lg z-50">
           {exportToast}
