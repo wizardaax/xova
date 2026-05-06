@@ -834,7 +834,7 @@ function App() {
             } else {
               setMessages((prev) => [...prev, {
                 id: bubbleId,
-                role: "xova",
+                role: isAbsorbBubble ? "absorb" : "xova",
                 ts: parsed.ts!,
                 text: display,
               }]);

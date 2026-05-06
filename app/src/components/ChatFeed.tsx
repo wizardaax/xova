@@ -187,7 +187,7 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
             const isVoiceUser = m.id.startsWith("voice-user-");
             const isVoice = m.id.startsWith("voice-") && !isVoiceUser;
             const isForgeReply = m.id.startsWith("forge-reply-");
-            const isAbsorbFinding = m.id.startsWith("absorb-finding-");
+            const isAbsorbFinding = m.id.startsWith("absorb-finding-") || m.role === "absorb";
             const speaker = isVoiceUser ? "🎙 you" : isUser ? "you" : isVoice ? "🎙 jarvis" : isForgeReply ? "🔨 forge" : isAbsorbFinding ? "🧠 noticed" : "xova";
             const showDay = idx === 0 || dayKey(messages[idx - 1].ts) !== dayKey(m.ts);
             return (

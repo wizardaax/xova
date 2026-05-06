@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 export interface ChatMessage {
   id: string;
-  role: "user" | "xova";
+  role: "user" | "xova" | "absorb";
   text: string;
   ts: number;
   /** Optional inline image (absolute local file path; rendered via tauri convertFileSrc). */
