@@ -10,9 +10,12 @@ import { AgentGraph } from "./AgentGraph";
 import { RepoHealth } from "./RepoHealth";
 import { RffMetrics } from "./RffMetrics";
 import { EventsLog } from "./EventsLog";
+import { DaemonDashboard } from "./DaemonDashboard";
+import { AgentDispatch } from "./AgentDispatch";
+import { AblationMetrics } from "./AblationMetrics";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",    label: "Camera",    emoji: "📷" },
@@ -25,6 +28,9 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "repos",     label: "Repos",     emoji: "📦" },
   { id: "metrics",   label: "Metrics",   emoji: "📊" },
   { id: "events",    label: "Events",    emoji: "⚡" },
+  { id: "daemons",   label: "Daemons",   emoji: "⚙️" },
+  { id: "dispatch",  label: "Dispatch",  emoji: "🎯" },
+  { id: "ablation",  label: "Ablation",  emoji: "🔬" },
 ];
 
 interface WorkspaceDockProps {
@@ -96,8 +102,11 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "search"    && <CorpusSearch  onClose={() => onTab(null)} />}
             {activeTab === "agents"    && <AgentGraph    onClose={() => onTab(null)} />}
             {activeTab === "repos"     && <RepoHealth    onClose={() => onTab(null)} />}
-            {activeTab === "metrics"   && <RffMetrics    onClose={() => onTab(null)} />}
-            {activeTab === "events"    && <EventsLog     onClose={() => onTab(null)} />}
+            {activeTab === "metrics"   && <RffMetrics      onClose={() => onTab(null)} />}
+            {activeTab === "events"    && <EventsLog      onClose={() => onTab(null)} />}
+            {activeTab === "daemons"   && <DaemonDashboard onClose={() => onTab(null)} />}
+            {activeTab === "dispatch"  && <AgentDispatch  onClose={() => onTab(null)} />}
+            {activeTab === "ablation"  && <AblationMetrics onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
