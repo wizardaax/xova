@@ -26,7 +26,7 @@ export function TestRunner({ onClose }: { onClose: () => void }) {
     const startTime = Date.now();
     try {
       const raw = await invoke<string>("xova_run", {
-        command: `${PY} -m pytest "${path}" -x --tb=short -q --no-header`,
+        command: `"${PY}" -m pytest "${path}" -x --tb=short -q --no-header`,
         cwd: path,
         elevated: false,
       });

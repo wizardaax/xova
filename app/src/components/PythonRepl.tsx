@@ -29,7 +29,7 @@ export function PythonRepl({ onClose }: { onClose: () => void }) {
     const input = code;
     try {
       const escaped = input.replace(/\\/g, "\\\\").replace(/"/g, '\\"').replace(/\n/g, "\\n");
-      const cmd = `${PYTHON} -c "${escaped}"`;
+      const cmd = `"${PYTHON}" -c "${escaped}"`;
       const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
       let stdout = raw, stderr = "";
       try { const w = JSON.parse(raw); stdout = w.stdout ?? ""; stderr = w.stderr ?? ""; } catch { /* use raw */ }

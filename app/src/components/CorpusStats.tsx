@@ -43,7 +43,7 @@ export function CorpusStats({ onClose }: { onClose: () => void }) {
   const rebuild = async () => {
     setRebuilding(true); setRebuildMsg("");
     try {
-      const res = await invoke<string>("xova_run", { command: 'python "D:\\temp\\build_corpus_index.py"', cwd: "C:\\Xova", elevated: false });
+      const res = await invoke<string>("xova_run", { command: `"C:\\Users\\adz_7\\AppData\\Local\\Programs\\Python\\Python313\\python.exe" "D:\\temp\\build_corpus_index.py"`, cwd: "C:\\Xova", elevated: false });
       let exit = 0;
       try { exit = JSON.parse(res).exit ?? 0; } catch { /* use raw */ }
       setRebuildMsg(exit === 0 ? "rebuilt ok" : `exit ${exit}`);

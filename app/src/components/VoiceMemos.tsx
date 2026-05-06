@@ -40,7 +40,7 @@ async function listFiles(offset: number): Promise<string[]> {
     "print(json.dumps(f[start:end]))",
   ].join(";");
   const res = await invoke<{ exit: number; stdout: string; stderr: string }>(
-    "xova_run", { command: `${PY} -c "${script.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`, cwd: DIR.replace(/\\/g, "\\\\"), elevated: false }
+    "xova_run", { command: `"${PY}" -c "${script.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`, cwd: DIR.replace(/\\/g, "\\\\"), elevated: false }
   );
   try { return JSON.parse(res.stdout.trim()).reverse(); } catch { return []; }
 }

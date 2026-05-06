@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { loadMeshFlags, saveMeshFlags, type MeshFlags, DEFAULT_MESH_FLAGS } from "@/lib/mesh";
 
 const FORGE_OPTIONS: Array<{ value: MeshFlags["forge_mode"]; label: string; desc: string; color: string }> = [
@@ -11,8 +11,10 @@ export function MeshFlagsEditor({ onClose }: { onClose: () => void }) {
   const [flags, setFlags] = useState<MeshFlags>(DEFAULT_MESH_FLAGS);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
+  const savedTimer = useRef<number | null>(null);
 
   useEffect(() => { loadMeshFlags().then(f => { setFlags(f); setLoading(false); }).catch(() => setLoading(false)); }, []);
+  useEffect(() => () => { if (savedTimer.current !== null) clearTimeout(savedTimer.current); }, []);
 
   const toggle = (key: keyof MeshFlags) => {
     if (typeof flags[key] !== "boolean") return;
@@ -24,8 +26,9 @@ export function MeshFlagsEditor({ onClose }: { onClose: () => void }) {
 
   const save = async () => {
     await saveMeshFlags(flags);
+    if (savedTimer.current !== null) clearTimeout(savedTimer.current);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    savedTimer.current = window.setTimeout(() => { setSaved(false); savedTimer.current = null; }, 2000);
   };
 
   const BOOL_FLAGS: Array<{ key: keyof MeshFlags; label: string; desc: string }> = [

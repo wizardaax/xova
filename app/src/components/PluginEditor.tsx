@@ -18,7 +18,7 @@ export function PluginEditor({ onClose }: { onClose: () => void }) {
     setLoadingFiles(true);
     try {
       const raw = await invoke<string>("xova_run", {
-        command: `${PYTHON} -c "import os,json; d=r'${PLUGINS_DIR}'; print(json.dumps(sorted(f for f in os.listdir(d) if f.endswith('.py')) if os.path.isdir(d) else []))"`,
+        command: `"${PYTHON}" -c "import os,json; d=r'${PLUGINS_DIR}'; print(json.dumps(sorted(f for f in os.listdir(d) if f.endswith('.py')) if os.path.isdir(d) else []))"`,
         cwd: PLUGINS_DIR, elevated: false,
       });
       let stdout = raw;
@@ -56,7 +56,7 @@ export function PluginEditor({ onClose }: { onClose: () => void }) {
     setRunning(true); setOutput("");
     try {
       const raw = await invoke<string>("xova_run", {
-        command: `${PYTHON} "${PLUGINS_DIR}\\${active}"`,
+        command: `"${PYTHON}" "${PLUGINS_DIR}\\${active}"`,
         cwd: PLUGINS_DIR, elevated: false,
       });
       let stdout = raw, stderr = "";
