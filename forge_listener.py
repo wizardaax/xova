@@ -396,8 +396,10 @@ def _update_board() -> None:
             "calls_this_hour": _rate_used(),
         }
         board["ts"] = int(now * 1000)
-        with open(AGENT_BOARD, "w", encoding="utf-8") as f:
+        tmp = AGENT_BOARD + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(board, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, AGENT_BOARD)
     except Exception as exc:
         _log(f"board update failed: {exc}")
 

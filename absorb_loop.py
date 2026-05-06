@@ -573,8 +573,11 @@ def _update_board() -> None:
         try:
             with open(AGENT_BOARD, "r", encoding="utf-8") as f:
                 board = json.load(f)
-        except Exception:
+        except FileNotFoundError:
             board = {}
+        except Exception:
+            _log("board read failed during _update_board — skipping cycle")
+            return
         board.setdefault("xova",   {"alive": False, "last_seen": 0, "current_task": None})
         board.setdefault("jarvis", {"alive": False, "last_seen": 0, "current_task": None})
         board.setdefault("forge",  {"alive": False, "last_seen": 0, "forge_mode": "off"})
@@ -587,8 +590,10 @@ def _update_board() -> None:
             "threshold": SIGNIFICANCE_THRESHOLD,
         }
         board["ts"] = int(now * 1000)
-        with open(AGENT_BOARD, "w", encoding="utf-8") as f:
+        tmp = AGENT_BOARD + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(board, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, AGENT_BOARD)
     except Exception as exc:
         _log(f"board update failed: {exc}")
 

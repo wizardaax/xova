@@ -82,8 +82,10 @@ def _write_xova_heartbeat(alive: bool) -> None:
         board["xova"]["alive"]     = alive
         board["xova"]["last_seen"] = now_ms if alive else board["xova"].get("last_seen", 0)
 
-        with open(AGENT_BOARD_PATH, "w", encoding="utf-8") as fh:
+        tmp = AGENT_BOARD_PATH + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
             json.dump(board, fh, indent=2, ensure_ascii=False)
+        os.replace(tmp, AGENT_BOARD_PATH)
     except Exception:
         pass  # board write failure must never crash the watchdog
 
