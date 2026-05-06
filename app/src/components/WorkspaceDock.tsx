@@ -7,9 +7,12 @@ import { MemoryPanel } from "./MemoryPanel";
 import { NavigatorTile } from "./NavigatorTile";
 import { CorpusSearch } from "./CorpusSearch";
 import { AgentGraph } from "./AgentGraph";
+import { RepoHealth } from "./RepoHealth";
+import { RffMetrics } from "./RffMetrics";
+import { EventsLog } from "./EventsLog";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",    label: "Camera",    emoji: "📷" },
@@ -19,6 +22,9 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "navigator", label: "Navigator", emoji: "🦢" },
   { id: "search",    label: "Search",    emoji: "🔍" },
   { id: "agents",    label: "Agents",    emoji: "🕸" },
+  { id: "repos",     label: "Repos",     emoji: "📦" },
+  { id: "metrics",   label: "Metrics",   emoji: "📊" },
+  { id: "events",    label: "Events",    emoji: "⚡" },
 ];
 
 interface WorkspaceDockProps {
@@ -89,6 +95,9 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "navigator" && <NavigatorTile onClose={() => onTab(null)} />}
             {activeTab === "search"    && <CorpusSearch  onClose={() => onTab(null)} />}
             {activeTab === "agents"    && <AgentGraph    onClose={() => onTab(null)} />}
+            {activeTab === "repos"     && <RepoHealth    onClose={() => onTab(null)} />}
+            {activeTab === "metrics"   && <RffMetrics    onClose={() => onTab(null)} />}
+            {activeTab === "events"    && <EventsLog     onClose={() => onTab(null)} />}
           </div>
         </div>
       )}

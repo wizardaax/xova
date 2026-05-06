@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { type ChatMessage } from "./Sidebar";
 import { cn } from "@/lib/utils";
 import ReactMarkdown from "react-markdown";
@@ -73,6 +73,18 @@ const STARTER_PROMPTS = [
 export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, onSuggest, onReply }: ChatFeedProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [stuckToBottom, setStuckToBottom] = useState(true);
+  const [feedback, setFeedback] = useState<Record<string, "up" | "down">>({});
+
+  const handleFeedback = (id: string, vote: "up" | "down") => {
+    setFeedback(prev => ({ ...prev, [id]: vote }));
+    const entry = JSON.stringify({ id, vote, ts: Date.now() });
+    const path = "C:\\Xova\\memory\\absorb_feedback.jsonl";
+    invoke<string>("xova_read_file", { path }).catch(() => "")
+      .then(existing => {
+        const appended = (existing.trimEnd() ? existing.trimEnd() + "\n" : "") + entry;
+        return invoke("xova_write_file", { path, content: appended });
+      }).catch(() => {});
+  };
   // Track whether the user has scrolled up. If so, don't yank them back to the
   // bottom on every new message — but show a jump-to-bottom button instead.
   useEffect(() => {
@@ -258,7 +270,20 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
                   isAbsorbFinding ? "text-violet-200 whitespace-pre-wrap border-l-2 border-violet-500 pl-3 py-1 bg-violet-950/30 rounded-r" :
                   "text-zinc-100 prose prose-invert prose-sm max-w-none prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800 prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-a:text-emerald-400"
                 )}>
-                  {isUser ? m.text : isVoice ? m.text : isForgeReply ? m.text : isAbsorbFinding ? m.text : (
+                  {isUser ? m.text : isVoice ? m.text : isForgeReply ? m.text : isAbsorbFinding ? (
+                    <>
+                      {m.text}
+                      <div className="flex items-center gap-2 mt-1 pt-1 border-t border-violet-900/40">
+                        <button onClick={() => handleFeedback(m.id, "up")}
+                          className={`text-[11px] transition-opacity ${feedback[m.id] === "up" ? "opacity-100" : "opacity-30 hover:opacity-70"}`}
+                          title="Useful finding">👍</button>
+                        <button onClick={() => handleFeedback(m.id, "down")}
+                          className={`text-[11px] transition-opacity ${feedback[m.id] === "down" ? "opacity-100" : "opacity-30 hover:opacity-70"}`}
+                          title="Not useful">👎</button>
+                        {feedback[m.id] && <span className="text-[9px] text-violet-600 font-mono">{feedback[m.id] === "up" ? "marked useful" : "noted"}</span>}
+                      </div>
+                    </>
+                  ) : (
                     /^(thinking\.\.\.?|📋\s*summarizing.*)$/i.test(m.text.trim()) ? (
                       <span className="typing-dots text-emerald-400 inline-flex items-center gap-1">
                         <span className="text-zinc-500 mr-1 text-xs">{m.text.trim().startsWith("📋") ? "summarising" : "thinking"}</span>
