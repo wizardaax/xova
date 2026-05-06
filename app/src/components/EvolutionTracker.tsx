@@ -107,7 +107,7 @@ export function EvolutionTracker({ onClose: _onClose }: { onClose?: () => void }
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {
-      const cmd = `${PYTHON} -c "import os,json; d=r'${EVO_DIR}'; f=sorted(x for x in os.listdir(d) if x.endswith('_evolve.json')) if os.path.isdir(d) else []; print(json.dumps(f))"`;
+      const cmd = `"${PYTHON}" -c "import os,json; d=r'${EVO_DIR}'; f=sorted(x for x in os.listdir(d) if x.endswith('_evolve.json')) if os.path.isdir(d) else []; print(json.dumps(f))"`;
       const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
       let stdout = raw;
       try { const w = JSON.parse(raw); if (typeof w.stdout === "string") stdout = w.stdout; } catch { /* use raw */ }

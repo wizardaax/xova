@@ -36,7 +36,7 @@ export function CyclesBrowser({ onClose }: { onClose: () => void }) {
     setLoading(true);
     try {
       const script = `import os,json; d=r'${CYCLES_DIR}'; f=sorted([x for x in os.listdir(d) if x.endswith('.json')]) if os.path.isdir(d) else []; print(json.dumps(f[-80:]))`;
-      const raw = await invoke<string>("xova_run", { command: `${PY} -c "${script.replace(/"/g, '\\"')}"`, cwd: "C:\\Xova", elevated: false });
+      const raw = await invoke<string>("xova_run", { command: `"${PY}" -c "${script.replace(/"/g, '\\"')}"`, cwd: "C:\\Xova", elevated: false });
       let stdout = raw;
       try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout !== undefined) stdout = w.stdout; } catch { /* raw */ }
       const files: string[] = JSON.parse(stdout.trim());

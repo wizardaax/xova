@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-const CMD = `python "C:\\Xova\\plugins\\swarm_status.py"`;
+const PY = "C:\\Users\\adz_7\\AppData\\Local\\Programs\\Python\\Python313\\python.exe";
+const PLUGIN = "C:\\Xova\\plugins\\swarm_status.py";
+const CMD = `"${PY}" "${PLUGIN}"`;
 
 interface SwarmStatus {
   num_shards: number; healthy_shards: number; total_workers: number;

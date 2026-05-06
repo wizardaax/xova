@@ -17,7 +17,7 @@ export function ExportsViewer({ onClose }: { onClose: () => void }) {
   const loadFiles = useCallback(async () => {
     setLoading(true);
     try {
-      const cmd = `${PYTHON} -c "import os,json; d=r'${EXPORTS_DIR}'; f=sorted(x for x in os.listdir(d) if x.endswith('.md')) if os.path.isdir(d) else []; print(json.dumps(f))"`;
+      const cmd = `"${PYTHON}" -c "import os,json; d=r'${EXPORTS_DIR}'; f=sorted(x for x in os.listdir(d) if x.endswith('.md')) if os.path.isdir(d) else []; print(json.dumps(f))"`;
       const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
       let stdout = raw;
       try { const w: RunResult = JSON.parse(raw); stdout = w.stdout ?? ""; } catch { /* use raw */ }

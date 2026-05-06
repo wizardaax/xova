@@ -38,7 +38,7 @@ export function MeshControl({ onClose }: { onClose: () => void }) {
     setStatus("running snapshot…");
     setErr("");
     try {
-      await invoke<string>("xova_run", { command: `${PY} "${PLUGIN}"`, cwd: "C:\\Xova", elevated: false });
+      await invoke<string>("xova_run", { command: `"${PY}" "${PLUGIN}"`, cwd: "C:\\Xova", elevated: false });
     } catch (e) {
       setErr(String(e));
       setStatus("");
