@@ -98,7 +98,7 @@ export function EvolutionStages({ onClose }: { onClose: () => void }) {
                     <div className="w-16 h-1.5 bg-zinc-800 rounded-full overflow-hidden">
                       <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(100, a.score * 100)}%` }} />
                     </div>
-                    <span className="text-zinc-500 text-[9px] tabular-nums">{(a.score * 100).toFixed(0)}%</span>
+                    <span className="text-zinc-500 text-[9px] tabular-nums">{Math.min(100, a.score * 100).toFixed(0)}%</span>
                   </div>
                 )}
                 {a.last_run != null && <span className="text-zinc-600 text-[9px] shrink-0">{fmtAge(a.last_run)}</span>}
