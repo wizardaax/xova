@@ -39,6 +39,7 @@ if _already_running():
 # ────────────────────────────────────────────────────────────────────────────
 
 POLL_SEC             = 5
+WATCHDOG_SCRIPT      = os.path.abspath(__file__)
 VENV_PYTHONW         = r"C:\jarvis\.venv\Scripts\pythonw.exe"   # jarvis venv — for jarvis.daemon
 MESH_PYTHONW         = r"C:\Users\adz_7\AppData\Local\Programs\Python\Python313\pythonw.exe"  # absolute path — no PATH dependency
 JARVIS_SRC           = r"C:\jarvis\src"
@@ -376,8 +377,25 @@ def main() -> None:
     prev_xova = _xova_alive()
     _log(f"initial xova state: {'alive' if prev_xova else 'dead'}")
 
+    try:
+        _self_mtime: float = os.path.getmtime(WATCHDOG_SCRIPT)
+    except OSError:
+        _self_mtime = 0.0
+
     while True:
         time.sleep(POLL_SEC)
+
+        try:
+            current_mtime = os.path.getmtime(WATCHDOG_SCRIPT)
+            if current_mtime != _self_mtime:
+                _log(
+                    f"AUDIT-2-023: watchdog source changed (mtime {_self_mtime:.0f} -> {current_mtime:.0f}). "
+                    "Running instance is STALE — manual swap required when safe."
+                )
+                _self_mtime = current_mtime
+        except OSError:
+            pass
+
         xova = _xova_alive()
 
         if xova:

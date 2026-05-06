@@ -4468,6 +4468,9 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           className="h-7 px-2 rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-emerald-600 hover:text-emerald-400">✂ snip</button>
         <button onClick={() => onSend("take a screenshot and tell me what you see")} disabled={isBusy}
           className="h-7 px-2 rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-emerald-600 hover:text-emerald-400 disabled:opacity-50">🖥 screen</button>
+        <button onClick={() => onSend("/enroll")} disabled={isBusy}
+          title="Enroll your voice for speaker recognition (30s recording)"
+          className="h-7 px-2 rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-emerald-600 hover:text-emerald-400 disabled:opacity-50">🎓 enroll</button>
         <button
           onClick={async () => {
             try {

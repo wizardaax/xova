@@ -58,8 +58,16 @@ const SLASH_COMMANDS: { cmd: string; hint: string }[] = [
   { cmd: "/uptime", hint: "how long xova has been running" },
 ];
 
+const DEPTH_PREFIXES: Record<number, string> = {
+  1: "Explain simply, like I'm 12:",
+  2: "Explain conceptually, no jargon:",
+  3: "Explain technically:",
+  4: "Show code and internals:",
+};
+
 export function CommandBar({ onSend, isBusy, onStop }: CommandBarProps) {
   const [input, setInput] = useState("");
+  const [depth, setDepth] = useState(0);
   const [micLevel, setMicLevel] = useState(0);
   const [showSuggest, setShowSuggest] = useState(false);
   const [suggestIdx, setSuggestIdx] = useState(0);
@@ -169,7 +177,8 @@ export function CommandBar({ onSend, isBusy, onStop }: CommandBarProps) {
 
   const submit = () => {
     if (!input.trim() || isBusy) return;
-    onSend(input.trim());
+    const prefix = depth > 0 ? `${DEPTH_PREFIXES[depth]} ` : "";
+    onSend(`${prefix}${input.trim()}`);
     setInput("");
   };
 
@@ -253,6 +262,22 @@ export function CommandBar({ onSend, isBusy, onStop }: CommandBarProps) {
             placeholder={isBusy ? "Type to queue (submit blocked while xova replies)" : "Command Xova... (try / for commands)"}
             className="w-full h-10 px-3 bg-zinc-900 border border-zinc-800 rounded text-sm text-zinc-100 font-mono placeholder-zinc-600 focus:outline-none focus:border-emerald-500"
           />
+        </div>
+        <div className="flex items-center gap-0.5 shrink-0" title="Depth: 0=off 1=simple 2=concepts 3=technical 4=code">
+          {[1, 2, 3, 4].map((d) => (
+            <button
+              key={d}
+              onClick={() => setDepth((prev) => prev === d ? 0 : d)}
+              className={cn(
+                "h-7 w-7 flex items-center justify-center rounded font-mono text-[11px] transition-colors",
+                depth === d
+                  ? "bg-emerald-600 text-white"
+                  : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200"
+              )}
+            >
+              {d}
+            </button>
+          ))}
         </div>
         <button
           onClick={submit}

@@ -43,10 +43,19 @@ except Exception as _exc:
     _COGNITIVE_IMPORT_ERROR = str(_exc)
     print(f"[mesh_runner] WARNING: CognitiveCycle import failed: {_exc} — running without cognitive cycle")
 
-FEED_PATH = r"C:\Xova\memory\mesh_feed.jsonl"
-FEED_CAP  = 5_000  # max lines kept; older entries trimmed on each write
-EVO_DIR   = r"C:\Xova\memory\evolution"
-PATCH_DIR = r"C:\Xova\memory\evolution\patches"
+try:
+    from recursive_field_math.phi_ucb import phi_ucb_score  # noqa: E402
+    _PHI_UCB_AVAILABLE: bool = True
+except Exception as _phi_exc:
+    phi_ucb_score = None  # type: ignore[assignment]
+    _PHI_UCB_AVAILABLE = False
+    print(f"[mesh_runner] WARNING: phi_ucb import failed: {_phi_exc} — using round-robin goal selection")
+
+FEED_PATH      = r"C:\Xova\memory\mesh_feed.jsonl"
+FEED_CAP       = 5_000
+EVO_DIR        = r"C:\Xova\memory\evolution"
+PATCH_DIR      = r"C:\Xova\memory\evolution\patches"
+UCB_STATE_PATH = r"C:\Xova\memory\phi_ucb_state.json"
 CYCLE_INTERVAL  = 60   # seconds between cognitive cycles
 EVO_EVERY_N     = 5    # run EvolutionEngine every N cognitive cycles
 
@@ -96,6 +105,42 @@ ROTATING_GOALS = [
     "ternary logic evaluation and constraint guardian check",
     "self model observation and field weave spiral",
 ]
+
+
+# ── φ-UCB goal selection ─────────────────────────────────────────────────────
+
+def _load_ucb_state() -> list[dict]:
+    try:
+        with open(UCB_STATE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list) and len(data) == len(ROTATING_GOALS):
+            if all("q" in d and "n" in d for d in data):
+                return data
+    except Exception:
+        pass
+    return [{"q": 0.0, "n": 0} for _ in ROTATING_GOALS]
+
+
+def _save_ucb_state(state: list[dict]) -> None:
+    try:
+        os.makedirs(os.path.dirname(UCB_STATE_PATH), exist_ok=True)
+        with open(UCB_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(state, f, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _ucb_select_goal(state: list[dict], t: int) -> int:
+    if not _PHI_UCB_AVAILABLE or phi_ucb_score is None:
+        return t % len(ROTATING_GOALS)
+    scores = [phi_ucb_score(s, t=t) for s in state]
+    return max(range(len(scores)), key=lambda i: scores[i])
+
+
+def _ucb_update(state: list[dict], idx: int, reward: float) -> None:
+    n_old = state[idx]["n"]
+    state[idx]["n"] = n_old + 1
+    state[idx]["q"] = (state[idx]["q"] * n_old + reward) / state[idx]["n"]
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────
@@ -469,15 +514,19 @@ def main() -> None:
         })
     else:
         cycle = CognitiveCycle()
-    goal_idx  = 0
     cycle_num = 0
+    ucb_state = _load_ucb_state()
+    ucb_t     = sum(s["n"] for s in ucb_state)
 
     _append({
         "ts":       time.time(),
         "kind":     "runner_start",
         "agent_id": "00",
         "label":    "Mesh Runner",
-        "content":  "13-agent fleet online · EvolutionEngine active · self-improvement every 5 cycles",
+        "content":  (
+            "13-agent fleet online · EvolutionEngine active · self-improvement every 5 cycles"
+            + (" · phi-UCB goal routing active" if _PHI_UCB_AVAILABLE else " · phi-UCB unavailable (round-robin)")
+        ),
     })
 
     while True:
@@ -487,8 +536,8 @@ def main() -> None:
             time.sleep(CYCLE_INTERVAL)
             continue
 
-        goal      = ROTATING_GOALS[goal_idx % len(ROTATING_GOALS)]
-        goal_idx += 1
+        goal_idx  = _ucb_select_goal(ucb_state, ucb_t)
+        goal      = ROTATING_GOALS[goal_idx]
         cycle_num += 1
 
         _append({
@@ -546,6 +595,11 @@ def main() -> None:
                     "coherence": round(result.average_coherence, 3),
                 })
 
+                reward = max(0.0, min(1.0, result.average_coherence - 0.1 * getattr(result, "gated_count", 0)))
+                _ucb_update(ucb_state, goal_idx, reward)
+                ucb_t += 1
+                _save_ucb_state(ucb_state)
+
             except Exception as exc:
                 _append({
                     "ts":       time.time(),
@@ -554,6 +608,9 @@ def main() -> None:
                     "label":    "Runner",
                     "content":  f"cycle error: {exc}",
                 })
+                _ucb_update(ucb_state, goal_idx, 0.0)
+                ucb_t += 1
+                _save_ucb_state(ucb_state)
 
         # EvolutionEngine self-improvement pass every EVO_EVERY_N cycles
         if cycle_num % EVO_EVERY_N == 0 and flags["evolutionEnabled"]:
