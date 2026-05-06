@@ -194,11 +194,11 @@ def action_send(playwright, site_cfg: dict, prompt: str, headless: bool) -> dict
             return {"ok": False, "error": "prompt_input_not_found", "needs_login": True,
                     "login_url": site_cfg["login_url"]}
 
-        # Type prompt
+        # Fill prompt (fill handles newlines + special chars; click first to ensure focus)
         input_el.click()
         time.sleep(0.3)
-        page.keyboard.type(prompt, delay=20)
-        time.sleep(0.5)
+        input_el.fill(prompt)
+        time.sleep(0.3)
 
         # Find and click send
         send_el, send_sel = _find(page, site_cfg["send_selectors"], timeout=4000)

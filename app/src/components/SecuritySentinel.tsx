@@ -231,47 +231,6 @@ export function SecuritySentinel({ onClose, wideDock, onToggleWide }: {
             </div>
           </div>
 
-          {/* Browser AI launcher */}
-          <div className="rounded border border-zinc-800 bg-zinc-900/30 overflow-hidden">
-            <div className="px-3 py-1.5 border-b border-zinc-800 flex items-center gap-1.5">
-              <span className="text-[9px] uppercase tracking-wider text-zinc-500">🌐 Browser AI</span>
-            </div>
-            <div className="p-2.5 space-y-2">
-              <div className="flex gap-1">
-                {(["claude","grok","chatgpt"] as const).map(s => (
-                  <button key={s} onClick={() => setBrowserSite(s)}
-                    className={`px-2 py-0.5 rounded border text-[9px] transition-colors ${
-                      browserSite === s
-                        ? "bg-emerald-900/40 border-emerald-700 text-emerald-300"
-                        : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-600"
-                    }`}>
-                    {s === "claude" ? "Claude" : s === "grok" ? "Grok" : "ChatGPT"}
-                  </button>
-                ))}
-              </div>
-              <div className="flex gap-1.5">
-                <button onClick={() => browserAction("open")} disabled={!!browserBusy}
-                  className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[9px] text-zinc-300 hover:border-emerald-700 hover:text-emerald-300 disabled:opacity-40 transition-colors">
-                  {browserBusy === "open" ? "opening…" : "🖥 Open"}
-                </button>
-                <button onClick={() => browserAction("check")} disabled={!!browserBusy}
-                  className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[9px] text-zinc-300 hover:border-zinc-500 disabled:opacity-40 transition-colors">
-                  {browserBusy === "check" ? "checking…" : "✓ Check"}
-                </button>
-                <button onClick={() => browserAction("screenshot")} disabled={!!browserBusy}
-                  className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[9px] text-zinc-400 hover:border-zinc-500 disabled:opacity-40 transition-colors"
-                  title="Screenshot">
-                  {browserBusy === "screenshot" ? "…" : "📷"}
-                </button>
-              </div>
-              {browserMsg && (
-                <div className={`text-[9px] leading-relaxed ${browserMsg.startsWith("✓") ? "text-emerald-400" : browserMsg.startsWith("✗") || browserMsg.includes("error") || browserMsg.includes("Not") ? "text-amber-400" : "text-zinc-400"}`}>
-                  {browserMsg}
-                </div>
-              )}
-            </div>
-          </div>
-
           {/* Footer info */}
           <div className="text-zinc-700 text-[9px] border-t border-zinc-900 pt-2 flex justify-between">
             <span>next scan {countdown}s · {lvl !== "clear" ? `${INTERVAL_ALERT}s` : `${INTERVAL_NORMAL}s`} interval</span>
@@ -279,6 +238,47 @@ export function SecuritySentinel({ onClose, wideDock, onToggleWide }: {
           </div>
         </div>
       )}
+
+      {/* ── Browser AI ─────────────────────────────── */}
+      <div className="shrink-0 border-t border-zinc-800 bg-zinc-950">
+        <div className="px-3 py-1.5 border-b border-zinc-800 flex items-center">
+          <span className="text-[9px] uppercase tracking-wider text-zinc-500">🌐 Browser AI</span>
+        </div>
+        <div className="p-2.5 space-y-2">
+          <div className="flex gap-1">
+            {(["claude","grok","chatgpt"] as const).map(s => (
+              <button key={s} onClick={() => setBrowserSite(s)}
+                className={`px-2 py-0.5 rounded border text-[9px] transition-colors ${
+                  browserSite === s
+                    ? "bg-emerald-900/40 border-emerald-700 text-emerald-300"
+                    : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-600"
+                }`}>
+                {s === "claude" ? "Claude" : s === "grok" ? "Grok" : "ChatGPT"}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-1.5">
+            <button onClick={() => browserAction("open")} disabled={!!browserBusy}
+              className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[9px] text-zinc-300 hover:border-emerald-700 hover:text-emerald-300 disabled:opacity-40 transition-colors">
+              {browserBusy === "open" ? "opening…" : "🖥 Open"}
+            </button>
+            <button onClick={() => browserAction("check")} disabled={!!browserBusy}
+              className="flex-1 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[9px] text-zinc-300 hover:border-zinc-500 disabled:opacity-40 transition-colors">
+              {browserBusy === "check" ? "checking…" : "✓ Check"}
+            </button>
+            <button onClick={() => browserAction("screenshot")} disabled={!!browserBusy}
+              className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-[9px] text-zinc-400 hover:border-zinc-500 disabled:opacity-40 transition-colors"
+              title="Screenshot">
+              {browserBusy === "screenshot" ? "…" : "📷"}
+            </button>
+          </div>
+          {browserMsg && (
+            <div className={`text-[9px] leading-relaxed ${browserMsg?.startsWith("✓") ? "text-emerald-400" : browserMsg?.startsWith("✗") || browserMsg?.includes("Not") ? "text-amber-400" : "text-zinc-400"}`}>
+              {browserMsg}
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

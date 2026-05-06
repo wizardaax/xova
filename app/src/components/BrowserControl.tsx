@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 const PY     = "C:\\Users\\adz_7\\AppData\\Local\\Programs\\Python\\Python313\\python.exe";
@@ -46,8 +46,6 @@ export function BrowserControl({ onClose }: { onClose: () => void }) {
   const [loginStatus, setLoginStatus] = useState<Record<Site, boolean | null>>({
     claude: null, grok: null, chatgpt: null,
   });
-  const textRef = useRef<HTMLTextAreaElement>(null);
-
   async function doAction(action: string, extra: string[] = []) {
     setBusy(action);
     setResult(null);
@@ -117,7 +115,6 @@ export function BrowserControl({ onClose }: { onClose: () => void }) {
         <div className="space-y-1.5">
           <div className="text-[9px] uppercase tracking-wider text-zinc-600">Send Prompt</div>
           <textarea
-            ref={textRef}
             value={prompt}
             onChange={e => setPrompt(e.target.value)}
             placeholder="Enter prompt to send…"
