@@ -1,0 +1,159 @@
+{
+  "version": "1.0",
+  "updated_at": 0,
+  "agents": [
+    {
+      "id": "agent-01-forge",
+      "name": "Forge",
+      "repo": "wizardaax/xova-agent-01-forge",
+      "specialty": ["llm_reasoning", "code_gen", "task_planning", "claude_code"],
+      "home_path": "C:\\Xova",
+      "inbox":  "C:\\Xova\\memory\\forge_inbox.json",
+      "outbox": "C:\\Xova\\memory\\forge_outbox.json",
+      "links_to": ["*"],
+      "sce88_role": "constraint_enforcer"
+    },
+    {
+      "id": "agent-02-jarvis",
+      "name": "Jarvis",
+      "repo": "wizardaax/xova-agent-02-jarvis",
+      "specialty": ["voice_ui", "pyqt_butler", "tts_stt", "user_interaction"],
+      "home_path": "C:\\jarvis",
+      "inbox":  "C:\\Xova\\memory\\jarvis_inbox.json",
+      "outbox": "C:\\Xova\\memory\\voice_inbox.json",
+      "links_to": ["agent-01-forge", "agent-03-mesh", "agent-12-voice"],
+      "sce88_role": "advisory"
+    },
+    {
+      "id": "agent-03-mesh",
+      "name": "Mesh",
+      "repo": "wizardaax/xova-agent-03-mesh",
+      "specialty": ["cognitive_cycle", "goal_routing", "phi_ucb", "snell_vern"],
+      "home_path": "C:\\Xova",
+      "inbox":  "C:\\Xova\\memory\\mesh_flags.json",
+      "outbox": "C:\\Xova\\memory\\mesh_feed.jsonl",
+      "links_to": ["agent-01-forge", "agent-06-evolution", "agent-13-coherence"],
+      "sce88_role": "publisher"
+    },
+    {
+      "id": "agent-04-browser",
+      "name": "Browser",
+      "repo": "wizardaax/xova-agent-04-browser",
+      "specialty": ["web_control", "scraping", "navigation", "dom_interaction"],
+      "home_path": "C:\\Xova",
+      "inbox":  "C:\\Xova\\memory\\browser_inbox.json",
+      "outbox": "C:\\Xova\\memory\\browser_outbox.json",
+      "links_to": ["agent-01-forge", "agent-05-corpus"],
+      "sce88_role": "advisory"
+    },
+    {
+      "id": "agent-05-corpus",
+      "name": "Corpus",
+      "repo": "wizardaax/xova-agent-05-corpus",
+      "specialty": ["memory_graph", "corpus_index", "search", "semantic_linking"],
+      "home_path": "C:\\Xova",
+      "inbox":  "C:\\Xova\\memory\\corpus_inbox.json",
+      "outbox": "C:\\Xova\\memory\\corpus_index.json",
+      "links_to": ["*"],
+      "sce88_role": "advisory"
+    },
+    {
+      "id": "agent-06-evolution",
+      "name": "Evolution",
+      "repo": "wizardaax/xova-agent-06-evolution",
+      "specialty": ["self_improvement", "evolution_engine", "patch_gen", "auto_merge"],
+      "home_path": "C:\\Xova",
+      "inbox":  "C:\\Xova\\memory\\evolution",
+      "outbox": "C:\\Xova\\memory\\evolution\\patches",
+      "links_to": ["agent-03-mesh", "agent-01-forge", "agent-11-repo"],
+      "sce88_role": "advisory"
+    },
+    {
+      "id": "agent-07-sentinel",
+      "name": "Sentinel",
+      "repo": "wizardaax/xova-agent-07-sentinel",
+      "specialty": ["sce88_gate", "security", "threat_watch", "ci_health", "constraint_validation"],
+      "home_path": "C:\\Xova",
+      "inbox":  "C:\\Xova\\memory\\sentinel_inbox.json",
+      "outbox": "C:\\Xova\\memory\\sentinel_outbox.json",
+      "links_to": ["*"],
+      "sce88_role": "gate_master"
+    },
+    {
+      "id": "agent-08-phase",
+      "name": "Phase",
+      "repo": "wizardaax/xova-agent-08-phase",
+      "specialty": ["phase_tracking", "lucas_fibonacci", "riemann_zeros", "phi_analysis"],
+      "home_path": "D:\\github\\wizardaax\\Snell-Vern-Hybrid-Drive-Matrix",
+      "inbox":  "C:\\Xova\\memory\\phase_inbox.json",
+      "outbox": "C:\\Xova\\memory\\phase_outbox.json",
+      "links_to": ["agent-03-mesh", "agent-09-field", "agent-13-coherence"],
+      "sce88_role": "advisory"
+    },
+    {
+      "id": "agent-09-field",
+      "name": "Field",
+      "repo": "wizardaax/xova-agent-09-field",
+      "specialty": ["field_weaver", "ternary_logic", "phi_ucb_scoring", "snell_vern_matrix"],
+      "home_path": "D:\\github\\wizardaax\\Snell-Vern-Hybrid-Drive-Matrix",
+      "inbox":  "C:\\Xova\\memory\\field_inbox.json",
+      "outbox": "C:\\Xova\\memory\\field_outbox.json",
+      "links_to": ["agent-08-phase", "agent-13-coherence", "agent-03-mesh"],
+      "sce88_role": "ternary_validator"
+    },
+    {
+      "id": "agent-10-memory",
+      "name": "Memory",
+      "repo": "wizardaax/xova-agent-10-memory",
+      "specialty": ["context_broker", "action_trace", "slot_management", "ttl_expiry"],
+      "home_path": "C:\\Xova",
+      "inbox":  "C:\\Xova\\memory\\context_broker.json",
+      "outbox": "C:\\Xova\\memory\\action_trace.jsonl",
+      "links_to": ["*"],
+      "sce88_role": "advisory"
+    },
+    {
+      "id": "agent-11-repo",
+      "name": "Repo",
+      "repo": "wizardaax/xova-agent-11-repo",
+      "specialty": ["repo_sync", "doc_keeper", "git_ops", "federation_sync"],
+      "home_path": "D:\\github\\wizardaax",
+      "inbox":  "C:\\Xova\\memory\\repo_inbox.json",
+      "outbox": "C:\\Xova\\memory\\repo_outbox.json",
+      "links_to": ["agent-01-forge", "agent-07-sentinel", "agent-06-evolution"],
+      "sce88_role": "advisory"
+    },
+    {
+      "id": "agent-12-voice",
+      "name": "Voice",
+      "repo": "wizardaax/xova-agent-12-voice",
+      "specialty": ["speaker_recognition", "voice_pipeline", "whisper_stt", "enroll"],
+      "home_path": "C:\\Xova",
+      "inbox":  "C:\\Xova\\memory\\voice_inbox.json",
+      "outbox": "C:\\Xova\\memory\\voice_outbox.json",
+      "links_to": ["agent-02-jarvis", "agent-01-forge"],
+      "sce88_role": "advisory"
+    },
+    {
+      "id": "agent-13-coherence",
+      "name": "Coherence",
+      "repo": "wizardaax/xova-agent-13-coherence",
+      "specialty": ["rff_score", "coherence_monitor", "phi_entropy", "field_health"],
+      "home_path": "C:\\Xova",
+      "inbox":  "C:\\Xova\\memory\\coherence_inbox.json",
+      "outbox": "C:\\Xova\\memory\\coherence_outbox.json",
+      "links_to": ["agent-03-mesh", "agent-07-sentinel", "agent-10-memory"],
+      "sce88_role": "coherence_reporter"
+    }
+  ],
+  "shared_slots": [
+    "xova.sce88_status",
+    "mesh.cycle_coherence",
+    "forge.last_reply",
+    "corpus.last_index",
+    "federation.heartbeat",
+    "sentinel.violations"
+  ],
+  "message_prefix": "@",
+  "sce88_enforced": true
+}
