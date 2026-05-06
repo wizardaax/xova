@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { SecuritySentinel } from "./SecuritySentinel";
 import { CaretLeft, CaretRight, X } from "@phosphor-icons/react";
 import { CameraTile } from "./CameraTile";
 import { FeedTile } from "./FeedTile";
@@ -54,7 +55,7 @@ import { EvolutionStages } from "./EvolutionStages";
 import { DriveMatrix } from "./DriveMatrix";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -109,6 +110,7 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "gitlog",       label: "Git Log",      emoji: "⎇" },
   { id: "evostages",    label: "Evo Stages",   emoji: "🧬" },
   { id: "drivematrix",  label: "Drive Matrix", emoji: "🔢" },
+  { id: "security",     label: "Security",     emoji: "🛡️" },
 ];
 
 interface WorkspaceDockProps {
@@ -123,13 +125,15 @@ interface WorkspaceDockProps {
  */
 export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
   const [cameraOn, setCameraOn] = useState(true);
+  const [wideDock, setWideDock] = useState(false);
 
   const collapsed = activeTab === null;
+  const dockWidth = collapsed ? "w-10" : activeTab === "security" && wideDock ? "w-[700px]" : "w-[420px]";
 
   return (
     <div className={cn(
-      "shrink-0 border-l border-zinc-800 bg-zinc-950 flex transition-[width] duration-150",
-      collapsed ? "w-10" : "w-[420px]"
+      "shrink-0 border-l border-zinc-800 bg-zinc-950 flex transition-[width] duration-200",
+      dockWidth
     )}>
       {/* Rail with tab buttons */}
       <div className="w-10 border-r border-zinc-900 flex flex-col items-center py-2 gap-1 shrink-0 overflow-y-auto">
@@ -224,6 +228,7 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "gitlog"      && <GitLog           onClose={() => onTab(null)} />}
             {activeTab === "evostages"   && <EvolutionStages  onClose={() => onTab(null)} />}
             {activeTab === "drivematrix" && <DriveMatrix      onClose={() => onTab(null)} />}
+            {activeTab === "security"    && <SecuritySentinel onClose={() => onTab(null)} wideDock={wideDock} onToggleWide={() => setWideDock(v => !v)} />}
           </div>
         </div>
       )}
