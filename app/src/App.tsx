@@ -294,6 +294,21 @@ function App() {
   // Hydrate banter pref from disk so the toggle in Settings persists.
   useEffect(() => { loadMemory<boolean>("banter_enabled").then((v) => { if (typeof v === "boolean") setBanterEnabled(v); }).catch(() => {}); }, []);
   useEffect(() => { loadMeshFlags().then(setMeshFlags).catch(() => {}); }, []);
+  // Keyboard shortcuts: Escape=close panels, Ctrl+K/Ctrl+/=palette, Ctrl+Shift+C=toggle panel.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") { setPanelOpen(false); setPaletteOpen(false); return; }
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "c") {
+        e.preventDefault(); setPanelOpen((v) => !v); return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "/")) {
+        e.preventDefault(); setPaletteOpen(true); return;
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const lastUserActivityRef = useRef<number>(Date.now());
   const idleFiredAtRef = useRef<number>(0);
   // Watch messages for the most-recent user write and bump the idle timer.

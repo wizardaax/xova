@@ -9,6 +9,11 @@ interface Status {
   gpu: { used_mb: number; free_mb: number };
 }
 
+interface MeshState {
+  cycles: number;
+  coherence: number | null;
+}
+
 interface StatusBarProps {
   /** Are we in the middle of a chat turn (Xova thinking)? */
   isBusy: boolean;
@@ -26,6 +31,8 @@ interface StatusBarProps {
  */
 export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode }: StatusBarProps) {
   const [status, setStatus] = useState<Status | null>(null);
+  const [mesh, setMesh] = useState<MeshState | null>(null);
+  const [forgeBusy, setForgeBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -34,6 +41,16 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode }: StatusBarPr
         const raw = await invoke<string>("xova_status");
         if (!cancelled) setStatus(JSON.parse(raw) as Status);
       } catch { /* ignore — Tauri shutdown etc. */ }
+      try {
+        const inbox = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\forge_inbox.json" });
+        if (!cancelled) {
+          const trimmed = inbox.trim();
+          if (trimmed.length > 0) {
+            try { const msg = JSON.parse(trimmed); setForgeBusy(msg.intent === "ask"); }
+            catch { setForgeBusy(false); }
+          } else { setForgeBusy(false); }
+        }
+      } catch { if (!cancelled) setForgeBusy(false); }
     };
     tick();
     const handle = window.setInterval(tick, 5000);
@@ -43,11 +60,42 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode }: StatusBarPr
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const tickMesh = async () => {
+      try {
+        const boardRaw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\agent_board.json" });
+        const board = JSON.parse(boardRaw);
+        const cycles: number = board?.absorb?.cycles ?? 0;
+        let coherence: number | null = null;
+        try {
+          const feedRaw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\mesh_feed.jsonl" });
+          const lines = feedRaw.split("\n").filter(Boolean);
+          for (let i = lines.length - 1; i >= 0; i--) {
+            try {
+              const entry = JSON.parse(lines[i]);
+              if (entry.kind === "cycle_end" && typeof entry.coherence === "number") { coherence = entry.coherence; break; }
+            } catch { /* skip malformed */ }
+          }
+        } catch { /* mesh_feed may not exist yet */ }
+        if (!cancelled) setMesh({ cycles, coherence });
+      } catch { /* agent_board may not exist yet */ }
+    };
+    tickMesh();
+    const handle = window.setInterval(tickMesh, 10000);
+    return () => { cancelled = true; window.clearInterval(handle); };
+  }, []);
+
   const dot = (alive: boolean) => alive ? "bg-emerald-400" : "bg-red-500";
   const loaded = status?.ollama.loaded ?? [];
   const gpuFree = status?.gpu.free_mb;
   const jarvisAlive = status?.jarvis.alive ?? false;
   const ollamaAlive = status?.ollama.alive ?? false;
+  const meshPillClass =
+    mesh?.coherence == null ? "text-zinc-500"
+    : mesh.coherence >= 0.8 ? "text-emerald-400"
+    : mesh.coherence >= 0.6 ? "text-amber-400"
+    : "text-red-400";
 
   // Inline silhouettes — Xova as a sleek AI orb with a stylized "Z" pulse,
   // Jarvis as a classic butler bust with bowtie. Color tracks alive state.
@@ -158,6 +206,20 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode }: StatusBarPr
           </span>
         </>
       )}
+      {mesh && (
+        <>
+          <span className="text-zinc-800">·</span>
+          <span
+            title={mesh.coherence == null
+              ? `Mesh cycle ${mesh.cycles} — coherence unknown`
+              : `Mesh cycle ${mesh.cycles} · coherence ${mesh.coherence.toFixed(2)} — ${mesh.coherence >= 0.8 ? "stable" : mesh.coherence >= 0.6 ? "moderate" : "degraded"}`}
+            className={`flex items-center gap-1 uppercase tracking-wider ${meshPillClass}`}
+          >
+            <span>⬡</span>
+            <span>cycle {mesh.cycles}{mesh.coherence != null ? ` · coh ${mesh.coherence.toFixed(2)}` : ""}</span>
+          </span>
+        </>
+      )}
       {loaded.length > 0 && (
         <span className="text-zinc-400 truncate max-w-[260px]" title={loaded.map(m => `${m.name} ${m.vram_gb.toFixed(2)}/${m.size_gb.toFixed(2)}GB`).join(" · ")}>
           {loaded.map(m => `${m.name.split(":")[0]} ${m.vram_gb.toFixed(1)}G`).join(" · ")}
@@ -178,6 +240,19 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode }: StatusBarPr
             }`}
           >
             {forgeMode === "live" ? "🔗 live" : "⏳ queue"}
+          </span>
+        </>
+      )}
+      {forgeBusy && (
+        <>
+          <span className="text-zinc-800">·</span>
+          <span
+            title="Forge is calling claude --print (processing an ask)"
+            className="flex items-center gap-1.5 uppercase tracking-wider text-[10px] text-fuchsia-400 animate-pulse"
+            style={{ textShadow: "0 0 6px #e879f9" }}
+          >
+            <span className="inline-block w-1.5 h-1.5 rounded-full bg-fuchsia-400 animate-ping" />
+            forging
           </span>
         </>
       )}
