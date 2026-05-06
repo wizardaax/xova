@@ -255,7 +255,7 @@ export function ChatFeed({ messages, activity, onTogglePin, onDelete, onEdit, on
                   isUser ? "text-zinc-300 text-right whitespace-pre-wrap" :
                   isVoice ? "text-emerald-300 whitespace-pre-wrap" :
                   isForgeReply ? "text-amber-200 whitespace-pre-wrap" :
-                  isAbsorbFinding ? "text-violet-300 whitespace-pre-wrap" :
+                  isAbsorbFinding ? "text-violet-200 whitespace-pre-wrap border-l-2 border-violet-500 pl-3 py-1 bg-violet-950/30 rounded-r" :
                   "text-zinc-100 prose prose-invert prose-sm max-w-none prose-pre:bg-zinc-950 prose-pre:border prose-pre:border-zinc-800 prose-code:text-amber-300 prose-code:bg-zinc-900 prose-code:px-1 prose-code:rounded prose-code:before:content-none prose-code:after:content-none prose-a:text-emerald-400"
                 )}>
                   {isUser ? m.text : isVoice ? m.text : isForgeReply ? m.text : isAbsorbFinding ? m.text : (

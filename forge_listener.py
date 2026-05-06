@@ -223,12 +223,13 @@ def _call_claude(text: str) -> str:
     """Invoke claude --print via stdin. Returns response text.
     Uses absolute path to claude.exe so pythonw's minimal PATH is not a problem.
     Retries once with 3s backoff on subprocess failure (AUDIT-2-007)."""
-    exe = CLAUDE_EXE if os.path.exists(CLAUDE_EXE) else "claude"
+    if not os.path.exists(CLAUDE_EXE):
+        return f"(claude CLI not found at {CLAUDE_EXE})"
     last_err: str = ""
     for attempt in range(2):
         try:
             proc = subprocess.run(
-                [exe, "--print"],
+                [CLAUDE_EXE, "--print"],
                 input=text,
                 capture_output=True,
                 text=True,
@@ -241,7 +242,7 @@ def _call_claude(text: str) -> str:
         except subprocess.TimeoutExpired:
             return "(claude --print timed out after 120s)"
         except FileNotFoundError:
-            return f"(claude CLI not found at {exe})"
+            return f"(claude CLI not found at {CLAUDE_EXE})"
         except Exception as exc:
             last_err = str(exc)
         if attempt == 0:
@@ -380,8 +381,11 @@ def _update_board() -> None:
         try:
             with open(AGENT_BOARD, "r", encoding="utf-8") as f:
                 board = json.load(f)
-        except Exception:
+        except FileNotFoundError:
             board = {}
+        except Exception:
+            _log("board read failed during _update_board — skipping cycle")
+            return
         board.setdefault("xova",   {"alive": False, "last_seen": 0, "current_task": None})
         board.setdefault("jarvis", {"alive": False, "last_seen": 0, "current_task": None})
         board.setdefault("shared", {"active_correlation_id": None, "context": {}})

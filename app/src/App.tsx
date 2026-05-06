@@ -4293,7 +4293,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           </button>
         </div>
       </div>
-      <StatusBar isBusy={isBusy} jarvisSpoke={jarvisSpoke} phase={phase} />
+      <StatusBar isBusy={isBusy} jarvisSpoke={jarvisSpoke} phase={phase} forgeMode={meshFlags.forge_mode} />
       {dragOver && (
         <div className="absolute inset-0 z-50 bg-emerald-900/30 border-4 border-dashed border-emerald-500 flex items-center justify-center pointer-events-none">
           <div className="text-2xl font-mono text-emerald-300">drop file to upload</div>

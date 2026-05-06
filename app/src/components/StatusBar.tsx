@@ -16,13 +16,15 @@ interface StatusBarProps {
   jarvisSpoke: boolean;
   /** GlyphPhaseEngine state — Xova's runtime coherence per Adam's substrate. */
   phase?: string;
+  /** Forge dispatch mode from mesh_flags.json */
+  forgeMode?: "live" | "queue" | "off";
 }
 
 /**
  * Top-of-window health/state strip. Pulls live state every 5s. Tells you at a
  * glance which side is up and what's loaded on the GPU.
  */
-export function StatusBar({ isBusy, jarvisSpoke, phase }: StatusBarProps) {
+export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode }: StatusBarProps) {
   const [status, setStatus] = useState<Status | null>(null);
 
   useEffect(() => {
@@ -165,6 +167,19 @@ export function StatusBar({ isBusy, jarvisSpoke, phase }: StatusBarProps) {
         <span className={gpuFree < 200 ? "text-red-400" : gpuFree < 600 ? "text-yellow-400" : "text-zinc-500"}>
           gpu free {gpuFree}MB
         </span>
+      )}
+      {forgeMode && forgeMode !== "off" && (
+        <>
+          <span className="text-zinc-800">·</span>
+          <span
+            title={forgeMode === "live" ? "Forge: active" : "Forge: queued"}
+            className={`flex items-center gap-1 uppercase tracking-wider text-[10px] ${
+              forgeMode === "live" ? "text-emerald-400" : "text-amber-400"
+            }`}
+          >
+            {forgeMode === "live" ? "🔗 live" : "⏳ queue"}
+          </span>
+        </>
       )}
       <span className="ml-auto text-zinc-700">
         {status ? `updated ${new Date(status.ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}` : "…"}

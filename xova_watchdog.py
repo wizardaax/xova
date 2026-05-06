@@ -69,8 +69,11 @@ def _write_xova_heartbeat(alive: bool) -> None:
         try:
             with open(AGENT_BOARD_PATH, "r", encoding="utf-8") as fh:
                 board = json.load(fh)
-        except (FileNotFoundError, json.JSONDecodeError):
+        except FileNotFoundError:
             board = {}
+        except json.JSONDecodeError:
+            _log("board JSON corrupt — skipping heartbeat write to avoid clobbering xova.alive")
+            return
 
         now_ms = int(time.time() * 1000)
         if "xova" not in board or not isinstance(board["xova"], dict):
@@ -111,9 +114,14 @@ def _xova_alive() -> bool:
             ["tasklist", "/FI", "IMAGENAME eq xova.exe", "/FO", "CSV", "/NH"],
             creationflags=NO_WIN,
             stderr=subprocess.DEVNULL,
+            timeout=10,
         ).decode(errors="replace")
         return "xova.exe" in out
-    except Exception:
+    except subprocess.TimeoutExpired:
+        _log("tasklist timed out — assuming xova alive")
+        return True
+    except Exception as exc:
+        _log(f"_xova_alive check failed: {exc}")
         return False
 
 
