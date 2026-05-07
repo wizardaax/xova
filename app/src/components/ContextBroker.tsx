@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-const PY     = "C:\\Users\\adz_7\\AppData\\Local\\Programs\\Python\\Python313\\python.exe";
-const PLUGIN = "C:\\Xova\\plugins\\context_broker.py";
-const CWD    = "C:\\Xova";
+const PY          = "C:\\Users\\adz_7\\AppData\\Local\\Programs\\Python\\Python313\\python.exe";
+const PLUGIN      = "C:\\Xova\\plugins\\context_broker.py";
+const CWD         = "C:\\Xova";
+const BROKER_PATH = "C:\\Xova\\memory\\context_broker.json";
 
 type AgentId = "forge" | "jarvis" | "mesh" | "xova" | string;
 
@@ -15,6 +16,8 @@ interface Slot {
   tags: string[];
 }
 interface SnapResult { ok: boolean; slots?: Record<string, Slot>; count?: number; error?: string; }
+interface IdeaValue { title?: string; what?: string; gap?: string; idea?: string; status?: string; note?: string; resolved_at?: number; file?: string; files?: string[]; source?: string; stores?: string[]; clients?: string[]; repos?: string[]; }
+interface AuditValue { title?: string; items?: string[]; source?: string; }
 
 const AGENTS: AgentId[] = ["forge", "jarvis", "mesh", "xova"];
 const AGENT_COLOR: Record<string, string> = {
@@ -54,6 +57,9 @@ export function ContextBroker({ onClose }: { onClose: () => void }) {
   const [agentFilter, setAgentFilter] = useState("all");
   const [expanded, setExpanded] = useState<string | null>(null);
 
+  const [view, setView]           = useState<"slots" | "ideas" | "audit">("slots");
+  const [directSlots, setDirectSlots] = useState<Record<string, Slot>>({});
+
   const [showWrite, setShowWrite] = useState(false);
   const [wKey,    setWKey]    = useState("");
   const [wValue,  setWValue]  = useState("");
@@ -71,6 +77,11 @@ export function ContextBroker({ onClose }: { onClose: () => void }) {
         setRefreshedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
       } else setErr(r.error ?? "snapshot failed");
     } catch (e) { setErr(String(e)); }
+    try {
+      const raw = await invoke<string>("xova_read_file", { path: BROKER_PATH });
+      const parsed = JSON.parse(raw) as { slots?: Record<string, Slot> };
+      setDirectSlots(parsed.slots ?? {});
+    } catch { /* ok */ }
     setLoading(false);
   }, []);
 
@@ -106,7 +117,15 @@ export function ContextBroker({ onClose }: { onClose: () => void }) {
           {refreshedAt && <span className="text-zinc-700 ml-1.5">· {refreshedAt}</span>}
         </span>
         {!loading && <span className="text-zinc-700 text-[9px]">· {visibleKeys.length} slot{visibleKeys.length !== 1 ? "s" : ""}</span>}
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex items-center gap-1.5">
+          {(["slots", "ideas", "audit"] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={`text-[8px] px-1.5 py-0.5 rounded border transition-colors ${
+                view === v ? "border-violet-600 text-violet-300 bg-violet-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"
+              }`}>
+              {v === "ideas" ? `ideas (${Object.keys(directSlots).filter(k => k.startsWith("ideas.")).length})` : v === "audit" ? "audit" : "slots"}
+            </button>
+          ))}
           <button onClick={() => setShowWrite(v => !v)}
             className={`text-[9px] px-2 py-0.5 rounded border transition-colors ${showWrite ? "border-blue-600 text-blue-400" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}>
             ＋ Write
@@ -166,8 +185,105 @@ export function ContextBroker({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {/* Ideas view */}
+      {view === "ideas" && (() => {
+        const ideaKeys = Object.keys(directSlots).filter(k => k.startsWith("ideas.")).sort();
+        const parseIdea = (v: unknown): IdeaValue => {
+          if (typeof v === "string") { try { return JSON.parse(v) as IdeaValue; } catch { return {}; } }
+          return (v ?? {}) as IdeaValue;
+        };
+        const resolved = ideaKeys.filter(k => parseIdea(directSlots[k].value).status === "resolved");
+        const open     = ideaKeys.filter(k => parseIdea(directSlots[k].value).status !== "resolved");
+        const tagCls = (t: string) => {
+          if (t === "critical") return "bg-red-900/50 border-red-700 text-red-300";
+          if (t === "unbuilt")  return "bg-amber-900/40 border-amber-700 text-amber-300";
+          if (t === "architecture") return "bg-cyan-900/40 border-cyan-700 text-cyan-300";
+          if (t === "ui")       return "bg-blue-900/40 border-blue-700 text-blue-300";
+          return "bg-zinc-800 border-zinc-700 text-zinc-500";
+        };
+        return (
+          <div className="flex-1 overflow-y-auto px-2 py-2 space-y-3">
+            <div>
+              <div className="text-[7px] uppercase tracking-wider text-zinc-600 px-1 mb-1">open ({open.length})</div>
+              <div className="space-y-1.5">
+                {open.map(k => {
+                  const idea = parseIdea(directSlots[k].value);
+                  const tags = directSlots[k].tags ?? [];
+                  return (
+                    <div key={k} className="bg-zinc-900/60 border border-zinc-800 rounded px-2.5 py-2">
+                      <div className="flex items-start gap-2 mb-1">
+                        <span className="text-zinc-200 text-[10px] font-semibold leading-snug flex-1">{idea.title ?? k.replace("ideas.", "")}</span>
+                      </div>
+                      {tags.length > 0 && (
+                        <div className="flex gap-1 flex-wrap mb-1.5">
+                          {tags.map(t => <span key={t} className={`text-[7px] px-1 py-px rounded border ${tagCls(t)}`}>{t}</span>)}
+                        </div>
+                      )}
+                      {idea.what && <div className="text-[9px] text-zinc-500 leading-snug mb-1"><span className="text-zinc-600 uppercase text-[7px] mr-1">what</span>{idea.what}</div>}
+                      {idea.gap  && <div className="text-[9px] text-amber-400/80 leading-snug mb-1"><span className="text-zinc-600 uppercase text-[7px] mr-1">gap</span>{idea.gap}</div>}
+                      {idea.idea && <div className="text-[9px] text-emerald-400/80 leading-snug"><span className="text-zinc-600 uppercase text-[7px] mr-1">idea</span>{idea.idea}</div>}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            {resolved.length > 0 && (
+              <div>
+                <div className="text-[7px] uppercase tracking-wider text-zinc-600 px-1 mb-1">resolved ({resolved.length})</div>
+                <div className="space-y-1">
+                  {resolved.map(k => {
+                    const idea = parseIdea(directSlots[k].value);
+                    return (
+                      <div key={k} className="bg-zinc-900/40 border border-zinc-800/60 rounded px-2.5 py-1.5 opacity-60">
+                        <div className="flex items-center gap-2">
+                          <span className="text-emerald-500 text-[9px]">✓</span>
+                          <span className="text-zinc-400 text-[9px]">{k.replace("ideas.", "")}</span>
+                        </div>
+                        {idea.note && <div className="text-zinc-600 text-[8px] leading-snug mt-0.5 truncate">{idea.note}</div>}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Audit view */}
+      {view === "audit" && (() => {
+        const auditSlot = directSlots["audit.open_items"];
+        let auditVal: AuditValue = {};
+        if (auditSlot) {
+          const v = auditSlot.value;
+          if (typeof v === "string") { try { auditVal = JSON.parse(v) as AuditValue; } catch { /**/ } }
+          else auditVal = (v ?? {}) as AuditValue;
+        }
+        const items = auditVal.items ?? [];
+        return (
+          <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+            <div className="text-[8px] text-zinc-600 px-1 pb-1">
+              Open audit findings · {items.length} items
+              {auditVal.source && <span className="ml-2 text-zinc-700">{auditVal.source}</span>}
+            </div>
+            {items.length === 0 && <div className="text-zinc-600 text-[10px] text-center py-4">no items</div>}
+            {items.map((item, i) => {
+              const m = item.match(/^(AUDIT-[\d-]+):\s*(.*)$/);
+              const id   = m ? m[1] : "";
+              const desc = m ? m[2] : item;
+              return (
+                <div key={i} className="flex items-start gap-2 border-b border-zinc-900 py-1.5 px-1">
+                  {id && <span className="text-amber-400 text-[8px] shrink-0 font-mono">{id}</span>}
+                  <span className="text-zinc-300 text-[9px] leading-snug">{desc}</span>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
+
       {/* Slot list */}
-      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+      {view === "slots" && <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
         {visibleKeys.map(key => {
           const slot = slots[key];
           const open = expanded === key;
