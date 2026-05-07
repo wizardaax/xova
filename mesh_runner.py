@@ -160,9 +160,12 @@ TASK_INITIATOR      = r"C:\Xova\plugins\task_initiator.py"
 DREAM_CONSOLIDATOR  = r"C:\Xova\plugins\dream_consolidator.py"
 CURIOSITY_ENGINE    = r"C:\Xova\plugins\curiosity_engine.py"
 PERSONA_GOVERNOR    = r"C:\Xova\plugins\persona_governor.py"
+CIPHER_AGENT        = r"C:\Xova\plugins\cipher_agent.py"
 SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
 DREAM_EVERY_H       = 6    # dream consolidation every N hours
+CIPHER_EVERY_N      = 50   # cipher agent status every 50 cycles (~50 min)
+STUCK_EVERY_N       = 10   # stuck-goal executor every 10 cycles (~10 min)
 _last_dream_ts: float = 0.0
 
 
@@ -567,6 +570,64 @@ def _try_apply_patch(change: dict) -> str:
     return f"spec written → evolution/patches/{spec_name}"
 
 
+# ── live agent metrics for EvolutionEngine ───────────────────────────────────
+
+def _read_live_agent_metrics() -> dict:
+    """Build agent_metrics dict from live board + self_eval for EvolutionEngine.observe()."""
+    try:
+        with open(AGENT_BOARD, encoding="utf-8") as fh:
+            board = json.load(fh)
+        with open(r"C:\Xova\memory\self_eval_store.json", encoding="utf-8") as fh:
+            evals = json.load(fh)
+    except Exception:
+        return {}
+
+    now = time.time()
+    metrics: dict = {}
+    strategies = evals.get("strategies", {}) if isinstance(evals, dict) else {}
+
+    for name, info in board.items():
+        if name == "ts" or not isinstance(info, dict):
+            continue
+        last_ms  = info.get("last_seen") or (info.get("checkin_ts", 0) * 1000)
+        age_s    = (now - last_ms / 1000) if last_ms else 9999
+        strat    = strategies.get(name, {})
+        score    = float(strat.get("score", 0.75)) if isinstance(strat, dict) else 0.75
+        alive    = info.get("alive", False)
+        metrics[name] = {
+            "latency_ms":           min(age_s * 1000, 60000),
+            "error_rate":           0.0 if alive else 0.5,
+            "test_coverage":        score,
+            "constraint_violations":0,
+            "memory_decay":         max(0.0, 1.0 - score),
+        }
+    return metrics
+
+
+def _run_cipher_agent() -> None:
+    """Run cipher_agent status — records state to mesh_feed."""
+    try:
+        subprocess.Popen(
+            [sys.executable, CIPHER_AGENT, "--action", "status"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"cipher agent error: {exc}")
+
+
+def _run_stuck_goal_executor() -> None:
+    """Execute stuck goals — task_initiator resolves auto-goals with no progress."""
+    try:
+        subprocess.Popen(
+            [sys.executable, TASK_INITIATOR, "--action", "execute_stuck"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"stuck goal executor error: {exc}")
+
+
 # ── evolution pipeline ────────────────────────────────────────────────────────
 
 def _run_evolution() -> None:
@@ -582,7 +643,8 @@ def _run_evolution() -> None:
     try:
         from recursive_field_math.evolution.meta_engine import EvolutionEngine
         e   = EvolutionEngine()
-        obs = e.observe()
+        live_metrics = _read_live_agent_metrics()
+        obs = e.observe(agent_metrics=live_metrics if live_metrics else None)
 
         # Log observation summary
         if isinstance(obs, dict):
@@ -644,14 +706,14 @@ def _run_evolution() -> None:
                     "human_gate": gate,
                     "version":    version,
                 })
-            auto_count = sum(1 for c in changes if not c.get("human_gate", True))
+            total_count = len(changes)
             gate_count = sum(1 for c in changes if c.get("human_gate", True))
             _append({
                 "ts":       time.time(),
                 "kind":     "evo_end",
                 "agent_id": "EV",
                 "label":    "EvolutionEngine",
-                "content":  f"v{version} · {auto_count} auto-applied · {gate_count} awaiting review",
+                "content":  f"v{version} · {total_count} proposals · {gate_count} awaiting review",
                 "version":  version,
             })
         else:
@@ -859,6 +921,14 @@ def main() -> None:
         # Persona synthesis: update governor voice every 30 cycles (~30 min)
         if cycle_num % 30 == 0:
             _run_persona_synthesize()
+
+        # Cipher agent: status + corpus check every CIPHER_EVERY_N cycles
+        if cycle_num % CIPHER_EVERY_N == 0:
+            _run_cipher_agent()
+
+        # Stuck-goal executor: attempt progress on stalled auto-goals
+        if cycle_num % STUCK_EVERY_N == 0:
+            _run_stuck_goal_executor()
 
         time.sleep(CYCLE_INTERVAL)
 
