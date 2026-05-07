@@ -23,6 +23,7 @@ GOAL_STORE      = r"C:\Xova\memory\goal_store.json"
 DISPATCH_STORE  = r"C:\Xova\memory\swarm_dispatch.json"
 SELF_EVAL_STORE = r"C:\Xova\memory\self_eval_store.json"
 MESH_FEED       = r"C:\Xova\memory\mesh_feed.jsonl"
+AGENT_BOARD     = r"C:\Xova\memory\agent_board.json"
 MODEL           = "llama3.2:3b"
 OLLAMA_URL      = "http://localhost:11434/api/chat"
 HISTORY_CAP     = 20   # conversation turns kept (each turn = user + assistant)
@@ -133,6 +134,19 @@ def _build_context() -> str:
             strat = s.get("strategy", "")
             if strat:
                 lines.append(f"{agent} strategy: {strat[:80]}")
+
+    # Forge (Claude) node status
+    board = _read_json(AGENT_BOARD)
+    if isinstance(board, dict):
+        f = board.get("forge", {})
+        if f.get("alive"):
+            age_s = int(time.time() - f.get("checkin_ts", f.get("last_seen", 0) / 1000))
+            lines.append(
+                f"Forge (Claude claude-sonnet-4-6): alive, "
+                f"mode={f.get('forge_mode','?')}, "
+                f"calls={f.get('calls_this_hour',0)}/20h, "
+                f"last_checkin={age_s}s ago"
+            )
 
     # Recent mesh errors (last 30 lines, extract error entries)
     try:

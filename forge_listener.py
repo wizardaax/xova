@@ -67,6 +67,7 @@ NO_WIN       = 0x08000000
 CLAUDE_EXE   = r"C:\Users\adz_7\AppData\Roaming\npm\node_modules\@anthropic-ai\claude-code\bin\claude.exe"
 RATE_LOG     = r"C:\Xova\memory\forge_rate_log.json"  # persisted rate limit timestamps
 SCE88_GATE        = r"C:\Xova\plugins\sce88_gate.py"
+FORGE_NODE        = r"C:\Xova\plugins\forge_node.py"
 CONTEXT_BROKER_STORE = r"C:\Xova\memory\context_broker.json"
 VIOLATIONS_LOG    = r"C:\Xova\memory\sentinel_violations.jsonl"
 VIOLATIONS_CAP    = 1000
@@ -559,7 +560,7 @@ def _route_voice_to_forge(mode: str) -> None:
 
 def _update_board() -> None:
     """Heartbeat write to agent_board.json forge section (~60s interval).
-    Last-write-wins — acceptable for heartbeat data."""
+    Also calls forge_node.py --action checkin to emit a mesh_feed event."""
     global _last_board_at
     now = time.time()
     if now - _last_board_at < 60:
@@ -578,10 +579,12 @@ def _update_board() -> None:
         board.setdefault("jarvis", {"alive": False, "last_seen": 0, "current_task": None})
         board.setdefault("shared", {"active_correlation_id": None, "context": {}})
         board["forge"] = {
-            "alive": True,
-            "last_seen": int(now * 1000),
-            "forge_mode": _mode(),
-            "calls_this_hour": _rate_used(),
+            "alive":            True,
+            "last_seen":        int(now * 1000),
+            "forge_mode":       _mode(),
+            "calls_this_hour":  _rate_used(),
+            "model":            "claude-sonnet-4-6",
+            "checkin_ts":       now,
         }
         board["ts"] = int(now * 1000)
         tmp = AGENT_BOARD + ".tmp"
@@ -590,6 +593,15 @@ def _update_board() -> None:
         os.replace(tmp, AGENT_BOARD)
     except Exception as exc:
         _log(f"board update failed: {exc}")
+    # Emit Forge node presence to mesh_feed so mesh_runner sees us as a node
+    try:
+        subprocess.Popen(
+            [sys.executable, FORGE_NODE, "--action", "checkin"],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            creationflags=NO_WIN,
+        )
+    except Exception:
+        pass
 
 
 def _drain_startup_queue() -> None:
