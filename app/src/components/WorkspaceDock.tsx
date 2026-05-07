@@ -68,9 +68,10 @@ import { ViolationsLog } from "./ViolationsLog";
 import { SwarmDispatch } from "./SwarmDispatch";
 import { LongTermMemory } from "./LongTermMemory";
 import { SelfEvalStore } from "./SelfEvalStore";
+import { EvolutionRuns } from "./EvolutionRuns";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog" | "agentrostr" | "violations" | "swarmdispatch" | "ltmemory" | "selfevalstore";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog" | "agentrostr" | "violations" | "swarmdispatch" | "ltmemory" | "selfevalstore" | "evoruns";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -141,6 +142,7 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "swarmdispatch", label: "Swarm Disp",  emoji: "🕸" },
   { id: "ltmemory",     label: "LT Memory",   emoji: "💾" },
   { id: "selfevalstore",label: "Self-Eval",   emoji: "🧮" },
+  { id: "evoruns",      label: "Evo Runs",    emoji: "🔬" },
 ];
 
 interface WorkspaceDockProps {
@@ -273,7 +275,8 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "violations"   && <ViolationsLog   onClose={() => onTab(null)} />}
             {activeTab === "swarmdispatch"  && <SwarmDispatch   onClose={() => onTab(null)} />}
             {activeTab === "ltmemory"       && <LongTermMemory  onClose={() => onTab(null)} />}
-            {activeTab === "selfevalstore"  && <SelfEvalStore   onClose={() => onTab(null)} />
+            {activeTab === "selfevalstore"  && <SelfEvalStore   onClose={() => onTab(null)} />}
+            {activeTab === "evoruns"        && <EvolutionRuns   onClose={() => onTab(null)} />
           </div>
         </div>
       )}
