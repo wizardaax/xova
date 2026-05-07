@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-const SHARED_FACTS_PATH = "C:\\Xova\\memory\\shared_facts.json";
+const SHARED_FACTS_PATH  = "C:\\Xova\\memory\\shared_facts.json";
+const XOVA_SYNC_PATH     = "C:\\Xova\\memory\\xova_sync_facts.json";
 
 interface JarvisMemoryNode { name: string; description: string; updated_at: string; }
 interface JarvisConversation { date: string; summary: string; topics: string; }
@@ -30,16 +31,21 @@ function fmtAge(iso: string): string {
 }
 
 export function SharedFacts({ onClose }: { onClose: () => void }) {
-  const [data, setData]       = useState<SharedFacts | null>(null);
-  const [view, setView]       = useState<"jarvis" | "xova" | "directives">("jarvis");
+  const [data, setData]         = useState<SharedFacts | null>(null);
+  const [xovaSync, setXovaSync] = useState<SyncFacts | null>(null);
+  const [view, setView]         = useState<"jarvis" | "xova" | "directives">("jarvis");
   const [updatedAt, setUpdatedAt] = useState("");
 
   const refresh = useCallback(async () => {
     try {
       const raw = await invoke<string>("xova_read_file", { path: SHARED_FACTS_PATH });
       setData(JSON.parse(raw) as SharedFacts);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch { /* ok */ }
+    try {
+      const raw = await invoke<string>("xova_read_file", { path: XOVA_SYNC_PATH });
+      setXovaSync(JSON.parse(raw) as SyncFacts);
+    } catch { /* ok */ }
+    setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
   }, []);
 
   useEffect(() => {
@@ -51,7 +57,8 @@ export function SharedFacts({ onClose }: { onClose: () => void }) {
   const nodes = data?.jarvis?.memory_nodes ?? [];
   const convs  = data?.jarvis?.recent_conversations ?? [];
   const standing = data?.xova?.standing_facts ?? [];
-  const sync  = data?.xova?.sync_facts;
+  // prefer the dedicated xova_sync_facts.json (more current) over the bundled sync_facts
+  const sync  = xovaSync ?? data?.xova?.sync_facts;
   const directives = sync?.directives ?? [];
 
   return (
