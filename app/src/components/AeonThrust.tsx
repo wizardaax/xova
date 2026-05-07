@@ -6,6 +6,7 @@ const CMD_SWEEP    = `python "C:\\Xova\\plugins\\aeon_sweep.py"`;
 const CMD_CI       = `python "C:\\Xova\\plugins\\ci_health.py" --action run`;
 const CMD_WEAVE    = `python "C:\\Xova\\plugins\\field_weave.py" --action run`;
 const CMD_TERNARY  = `python "C:\\Xova\\plugins\\ternary_eval.py" --action run`;
+const CMD_LUCAS    = `python "C:\\Xova\\plugins\\lucas_phase.py" --action run`;
 const RUN_LOG_PATH = "C:\\Xova\\memory\\aeon_run_log.jsonl";
 const BROKER_PATH  = "C:\\Xova\\memory\\context_broker.json";
 const W = 360, H = 100, PAD = { t: 6, r: 6, b: 18, l: 6 };
@@ -36,6 +37,7 @@ interface CIRepo { name: string; ok: boolean; passed: number; failed: number; er
 interface CIHealth { ok: boolean; repos: CIRepo[]; total_passed: number; total_failed: number; total_errors: number; score: number; duration_s: number; ts: number }
 interface FieldWeaveSlot { ok: boolean; score: number; golden_deg?: number; coh_score?: number; radial_score?: number; angle_fid?: number; ts: number }
 interface TernarySlot { ok: boolean; score: number; affirm: number; neutral: number; deny: number; ternary_balance: number; gate_rate: number; stability: number; ts: number }
+interface LucasSlot { ok: boolean; score: number; n_terms: number; final_ratio: number; conv_err: number; last_stdev: number; aeon_phi?: number; binet_ok?: boolean; seq_sample?: number[]; ts: number }
 
 export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [summary,    setSummary]    = useState<AeonSummary | null>(null);
@@ -47,11 +49,13 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [ternary,       setTernary]       = useState<TernarySlot | null>(null);
   const [weaveRunning,  setWeaveRunning]  = useState(false);
   const [ternaryRunning, setTernaryRunning] = useState(false);
+  const [lucasSlot,   setLucasSlot]   = useState<LucasSlot | null>(null);
+  const [lucasRunning, setLucasRunning] = useState(false);
   const [err,        setErr]        = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [sweeping,   setSweeping]   = useState(false);
   const [updatedAt,  setUpdatedAt]  = useState("");
-  const [tab,        setTab]        = useState<"sim" | "sweep" | "history" | "ci">("sim");
+  const [tab,        setTab]        = useState<"sim" | "sweep" | "history" | "ci" | "lucas">("sim");
 
   async function xovaRun(cmd: string): Promise<string> {
     const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
@@ -78,6 +82,8 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       if (fw?.ok) setFieldWeave(fw);
       const te = broker.slots?.["xova.ternary_eval"] as TernarySlot | undefined;
       if (te?.ok) setTernary(te);
+      const lc = broker.slots?.["xova.lucas_phase"] as LucasSlot | undefined;
+      if (lc?.ok) setLucasSlot(lc);
     } catch { /**/ }
   }, []);
 
@@ -109,6 +115,16 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       if (parsed.ok) setTernary(parsed);
     } catch { /**/ }
     setTernaryRunning(false);
+  }, []);
+
+  const runLucas = useCallback(async () => {
+    setLucasRunning(true);
+    try {
+      const stdout = await xovaRun(CMD_LUCAS);
+      const parsed = JSON.parse(stdout) as LucasSlot;
+      if (parsed.ok) { setLucasSlot(parsed); setTab("lucas"); }
+    } catch { /**/ }
+    setLucasRunning(false);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -155,6 +171,14 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
     });
   }, []);
 
+  // Lucas sequence L(0)=2, L(1)=1; ratios converge to phi
+  const lucasRatios = useMemo(() => {
+    const N = lucasSlot?.n_terms ?? 30;
+    const seq: number[] = [2, 1];
+    for (let i = 2; i < N; i++) seq.push(seq[i - 1] + seq[i - 2]);
+    return seq.slice(1).map((v, i) => v / seq[i]);  // L(n+1)/L(n)
+  }, [lucasSlot?.n_terms]);
+
   const CONST_LABELS: [keyof AeonSummary["constants"], string][] = [
     ["PHI", "φ"], ["PSI_RESONANCE", "ψ"], ["GOLDEN_ANGLE_DEG", "∠°"], ["ALPHA_INV", "α⁻¹"],
   ];
@@ -165,10 +189,13 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800 shrink-0">
         <span className="text-[9px] uppercase tracking-wider text-zinc-500">AEON{updatedAt ? ` · ${updatedAt}` : ""}</span>
         <div className="flex gap-1 ml-auto">
-          {(["sim", "sweep", "history", "ci"] as const).map(t => (
+          {(["sim", "sweep", "history", "ci", "lucas"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-2 py-0.5 rounded border text-[8px] transition-colors ${tab === t ? "border-violet-600 text-violet-300 bg-violet-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}>
-              {t === "ci" && ciHealth ? (ciHealth.total_failed || ciHealth.total_errors ? "⚠ci" : "✓ci") : t}
+              {t === "ci" && ciHealth
+                ? (ciHealth.total_failed || ciHealth.total_errors ? "⚠ci" : "✓ci")
+                : t === "lucas" && lucasSlot ? `φ${(lucasSlot.score * 100).toFixed(0)}`
+                : t}
             </button>
           ))}
         </div>
@@ -318,6 +345,86 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
               <div className="text-zinc-700 text-[8px]">no data — click run ternary</div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Lucas tab — φ convergence chart */}
+      {tab === "lucas" && (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[8px] text-zinc-500 uppercase tracking-wider">Lucas φ convergence</span>
+            <button onClick={runLucas} disabled={lucasRunning}
+              className="px-1.5 py-0.5 rounded border border-violet-800 text-violet-400 text-[7px] hover:bg-violet-900/30 disabled:opacity-40">
+              {lucasRunning ? "…" : "run lucas"}
+            </button>
+          </div>
+          {/* Ratio convergence chart */}
+          {(() => {
+            const RW = 340, RH = 90, rPad = { t: 6, r: 6, b: 18, l: 32 };
+            const rIW = RW - rPad.l - rPad.r, rIH = RH - rPad.t - rPad.b;
+            const phi = PHI_SPIRAL;
+            const nr = lucasRatios.length;
+            const minR = Math.min(...lucasRatios, phi - 0.5);
+            const maxR = Math.max(...lucasRatios, phi + 0.5);
+            const rRange = maxR - minR || 1;
+            const rx = (i: number) => rPad.l + (i / Math.max(nr - 1, 1)) * rIW;
+            const ry = (v: number) => rPad.t + (1 - (v - minR) / rRange) * rIH;
+            const phiY = ry(phi);
+            const pathD = lucasRatios.map((r, i) => `${i === 0 ? "M" : "L"}${rx(i).toFixed(1)},${ry(r).toFixed(1)}`).join(" ");
+            return (
+              <svg viewBox={`0 0 ${RW} ${RH}`} width="100%" style={{ display: "block" }}>
+                <rect x={rPad.l} y={rPad.t} width={rIW} height={rIH} fill="#18181b" rx="2" />
+                {/* φ reference line */}
+                <line x1={rPad.l} y1={phiY} x2={rPad.l + rIW} y2={phiY} stroke="#6d28d9" strokeWidth="0.8" strokeDasharray="3,2" opacity="0.6" />
+                <text x={rPad.l - 2} y={phiY + 3} fontSize="6" fill="#a78bfa" textAnchor="end">φ</text>
+                {/* Ratio series */}
+                <path d={pathD} fill="none" stroke="#34d399" strokeWidth="1.2" strokeLinejoin="round" />
+                {nr > 0 && <circle cx={rx(nr - 1)} cy={ry(lucasRatios[nr - 1])} r="2.5" fill="#34d399" />}
+                <text x={rPad.l + 2} y={RH - 3} fontSize="6" fill="#52525b">n=0</text>
+                <text x={rPad.l + rIW - 2} y={RH - 3} fontSize="6" fill="#52525b" textAnchor="end">n={nr}</text>
+              </svg>
+            );
+          })()}
+          {/* Stats grid */}
+          {lucasSlot && (
+            <div className="grid grid-cols-3 gap-1">
+              <div className="bg-zinc-900 rounded p-1.5 text-center">
+                <div className="text-[8px] text-zinc-500 mb-0.5">score</div>
+                <div className="font-bold text-[11px]" style={{ color: lucasSlot.score >= 0.9 ? "#34d399" : "#fbbf24" }}>
+                  {(lucasSlot.score * 100).toFixed(1)}%
+                </div>
+              </div>
+              <div className="bg-zinc-900 rounded p-1.5 text-center">
+                <div className="text-[8px] text-zinc-500 mb-0.5">final ratio</div>
+                <div className="text-violet-300 font-mono text-[10px] font-bold">{lucasSlot.final_ratio.toFixed(10)}</div>
+              </div>
+              <div className="bg-zinc-900 rounded p-1.5 text-center">
+                <div className="text-[8px] text-zinc-500 mb-0.5">conv err</div>
+                <div className="text-emerald-300 font-mono text-[10px]">{lucasSlot.conv_err.toExponential(2)}</div>
+              </div>
+            </div>
+          )}
+          {lucasSlot && (
+            <div className="flex items-center gap-3 text-[8px] px-1">
+              <span className="text-zinc-600">n_terms <span className="text-zinc-300">{lucasSlot.n_terms}</span></span>
+              <span className="text-zinc-600">aeon_φ <span className="text-emerald-400">{lucasSlot.aeon_phi?.toFixed(8) ?? "—"}</span></span>
+              <span className="text-zinc-600">binet <span className={lucasSlot.binet_ok ? "text-emerald-400" : "text-amber-400"}>{lucasSlot.binet_ok ? "✓" : "✕"}</span></span>
+              <span className="text-zinc-600">stdev <span className="text-zinc-300">{lucasSlot.last_stdev.toExponential(2)}</span></span>
+            </div>
+          )}
+          {!lucasSlot && (
+            <div className="text-zinc-600 text-[9px] text-center py-4">no data — click run lucas</div>
+          )}
+          {lucasSlot?.seq_sample && (
+            <div className="bg-zinc-900 rounded p-2">
+              <div className="text-[7px] text-zinc-600 mb-1">sequence sample (first 10): L(n) = L(n-1) + L(n-2)</div>
+              <div className="flex gap-1 flex-wrap">
+                {lucasSlot.seq_sample.map((v, i) => (
+                  <span key={i} className="text-emerald-400 font-mono text-[8px] px-1 bg-zinc-800 rounded">{v}</span>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
