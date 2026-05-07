@@ -9,6 +9,7 @@ const LTM_PATH        = "C:\\Xova\\memory\\long_term_memory.json";
 const GOAL_MGR        = `python "C:\\Xova\\plugins\\goal_manager.py"`;
 const GOAL_PROPOSER   = `python "C:\\Xova\\plugins\\goal_proposer.py"`;
 const DREAM_CMD       = `python "C:\\Xova\\plugins\\dream_consolidator.py" --action consolidate`;
+const SCAN_CMD        = `python "C:\\Xova\\plugins\\domain_scan.py"`;
 
 interface ProgressEntry {
   ts:        number;
@@ -98,6 +99,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [domainScores, setDomainScores] = useState<(number | null)[]>([]);
   const [ltmData,      setLtmData]      = useState<LtmData | null>(null);
   const [dreamRunning, setDreamRunning] = useState(false);
+  const [scanRunning,  setScanRunning]  = useState(false);
   const [loading,     setLoading]     = useState(true);
   const [proposing,   setProposing]   = useState(false);
   const [newGoal,     setNewGoal]     = useState("");
@@ -217,6 +219,14 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     setDreamRunning(false);
   }, [refresh]);
 
+  const runScan = useCallback(async () => {
+    setScanRunning(true);
+    try {
+      await xovaRun(SCAN_CMD);          // returns immediately — plugins run in background
+      setTimeout(() => { refresh(); setScanRunning(false); }, 35_000);
+    } catch { setScanRunning(false); }
+  }, [refresh]);
+
   if (!store) return (
     <div className="flex-1 flex items-center justify-center text-zinc-600 font-mono text-[11px]">
       {loading ? "loading…" : "no goal store"}
@@ -255,6 +265,11 @@ export function GoalState({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+        <button onClick={runScan} disabled={scanRunning}
+          title="Launch all 7 domain plugins — auto-refreshes in 35s"
+          className="px-2 py-0.5 rounded border border-teal-700 text-teal-400 text-[9px] hover:bg-teal-900/30 disabled:opacity-40">
+          {scanRunning ? "scanning…" : "scan domains"}
+        </button>
         <button onClick={propose} disabled={proposing}
           title="Generate sub-goal proposals from self-eval gaps"
           className="px-2 py-0.5 rounded border border-violet-700 text-violet-400 text-[9px] hover:bg-violet-900/30 disabled:opacity-40">
