@@ -167,6 +167,7 @@ LUCAS_PHASE         = r"C:\Xova\plugins\lucas_phase.py"
 FIELD_WEAVE         = r"C:\Xova\plugins\field_weave.py"
 TERNARY_EVAL        = r"C:\Xova\plugins\ternary_eval.py"
 CORPUS_RECALL       = r"C:\Xova\plugins\corpus_recall.py"
+REPO_SYNC           = r"C:\Xova\plugins\repo_sync.py"
 SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
 CI_EVERY_N          = 30   # CI health scan every 30 cycles (~30 min)
@@ -174,6 +175,7 @@ LUCAS_EVERY_N       = 25   # Lucas phase analysis every 25 cycles (~25 min)
 WEAVE_EVERY_N       = 35   # field weave phi-spiral every 35 cycles (~35 min)
 TERNARY_EVERY_N     = 15   # ternary constraint evaluation every 15 cycles (~15 min)
 CORPUS_EVERY_N      = 20   # corpus recall health check every 20 cycles (~20 min)
+REPO_SYNC_EVERY_N   = 45   # repo sync audit every 45 cycles (~45 min)
 DREAM_EVERY_H       = 6    # dream consolidation every N hours
 CIPHER_EVERY_N      = 50   # cipher agent status every 50 cycles (~50 min)
 FEDERATION_EVERY_N  = 60   # cross-AI fact federation sync every 60 cycles (~1 hr)
@@ -323,6 +325,18 @@ def _run_ternary_eval() -> None:
         )
     except Exception as exc:
         _log(f"ternary eval error: {exc}")
+
+
+def _run_repo_sync() -> None:
+    """Run repo_sync.py in background — git state audit across all tracked repos."""
+    try:
+        subprocess.Popen(
+            [sys.executable, REPO_SYNC, "--action", "run"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"repo sync error: {exc}")
 
 
 def _run_corpus_recall() -> None:
@@ -1179,6 +1193,7 @@ def main() -> None:
                 _last_weave_score:    float | None = None  # Sprint 8: field weave → UCB
                 _last_ternary_score:  float | None = None  # Sprint 9: ternary eval → UCB
                 _last_corpus_score:   float | None = None  # Sprint 10: corpus recall → UCB
+                _last_repo_sync_score: float | None = None  # Sprint 11: repo sync → UCB
 
                 # SCE-88: publish cycle coherence to context_broker for advisory gate
                 _write_context_slot("xova.sce88_status", {
@@ -1315,6 +1330,25 @@ def main() -> None:
                             )
                     except Exception:
                         pass
+                    # Repo sync: git state audit across Snell-Vern fleet
+                    try:
+                        with open(CONTEXT_BROKER, encoding="utf-8") as _rs:
+                            _rs_data = json.load(_rs)
+                        _rs_slot    = _rs_data.get("slots", {}).get("xova.repo_sync", {})
+                        _rs_score   = _rs_slot.get("score")
+                        _rs_clean   = _rs_slot.get("clean")
+                        _rs_total   = _rs_slot.get("total")
+                        _rs_ahead   = _rs_slot.get("ahead_list", [])
+                        if _rs_score is not None:
+                            _last_repo_sync_score = _rs_score
+                            _ahead_note = f" · {len(_rs_ahead)} repo ahead" if _rs_ahead else ""
+                            _goal_kw.append(
+                                f"repo sync audit complete · {_rs_clean}/{_rs_total} repos clean"
+                                f"{_ahead_note} · documentation coverage checked"
+                                f" · fleet sync score {_rs_score:.3f}"
+                            )
+                    except Exception:
+                        pass
                     # Field weave: phi-spiral coherence + golden angle cross-validation
                     _last_weave_score: float | None = None
                     try:
@@ -1357,6 +1391,10 @@ def main() -> None:
                     reward = (0.45 * _coh_reward
                               + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
                               + 0.25 * _last_lucas_score)
+                elif goal_idx == 2 and _last_repo_sync_score is not None:
+                    reward = (0.45 * _coh_reward
+                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
+                              + 0.25 * _last_repo_sync_score)
                 elif goal_idx == 4 and _last_corpus_score is not None:
                     reward = (0.45 * _coh_reward
                               + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
@@ -1430,6 +1468,10 @@ def main() -> None:
         # Corpus recall: memory index health + coherence monitor every CORPUS_EVERY_N cycles (~20 min)
         if cycle_num % CORPUS_EVERY_N == 0:
             _run_corpus_recall()
+
+        # Repo sync: git state audit every REPO_SYNC_EVERY_N cycles (~45 min)
+        if cycle_num % REPO_SYNC_EVERY_N == 0:
+            _run_repo_sync()
 
         # Dream consolidation: distil 24h of data every DREAM_EVERY_H hours
         _run_dream_consolidation()
