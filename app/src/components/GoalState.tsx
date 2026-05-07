@@ -56,6 +56,8 @@ interface LtmData {
   insights?:             string[];
 }
 interface DomainSlot { ok?: boolean; score?: number; ts?: number; sweep?: Array<{ quality?: number }>; optimal?: { quality?: number } }
+interface RepoEntry { name: string; clean: boolean; ahead: number; dirty: number; has_docs: boolean; last_commit?: string; branch?: string; }
+interface RepoSyncSlot { ok?: boolean; score?: number; clean?: number; total?: number; ahead_list?: string[]; dirty_list?: string[]; repos?: RepoEntry[]; docs_score?: number; with_docs?: number; }
 interface UcbReward {
   cycle:         number;
   goal_idx:      number;
@@ -116,6 +118,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [ltmData,      setLtmData]      = useState<LtmData | null>(null);
   const [evalHistory,  setEvalHistory]  = useState<SelfEvalEntry[]>([]);
   const [selfMods,     setSelfMods]     = useState<SelfModProposal[]>([]);
+  const [repoSlot,     setRepoSlot]     = useState<RepoSyncSlot | null>(null);
   const [dreamRunning, setDreamRunning] = useState(false);
   const [scanRunning,  setScanRunning]  = useState(false);
   const [loading,     setLoading]     = useState(true);
@@ -123,7 +126,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [newGoal,     setNewGoal]     = useState("");
   const [saving,      setSaving]      = useState(false);
   const [updatedAt,   setUpdatedAt]   = useState("");
-  const [view,        setView]        = useState<"active" | "all" | "proposals" | "dream" | "mods">("active");
+  const [view,        setView]        = useState<"active" | "all" | "proposals" | "dream" | "mods" | "repos">("active");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -166,6 +169,8 @@ export function GoalState({ onClose }: { onClose: () => void }) {
         return typeof s.score === "number" ? s.score : null;
       });
       setDomainScores(dScores);
+      const rs = broker.slots?.["xova.repo_sync"] as RepoSyncSlot | undefined;
+      if (rs?.ok) setRepoSlot(rs);
     } catch { /* broker may not have slots yet */ }
     // Load long-term memory (dream consolidator output)
     try {
@@ -286,7 +291,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
           Goals{updatedAt ? ` · ${updatedAt}` : ""}
         </span>
         <div className="flex gap-1 ml-auto">
-          {(["active", "all", "proposals", "dream", "mods"] as const).map(v => (
+          {(["active", "all", "proposals", "dream", "mods", "repos"] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={`px-2 py-0.5 rounded border text-[9px] transition-colors ${
                 view === v ? "border-emerald-600 text-emerald-300 bg-emerald-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"
@@ -612,7 +617,46 @@ export function GoalState({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {view !== "proposals" && view !== "dream" && view !== "mods" && (
+      {/* Repo sync detail view */}
+      {view === "repos" && (
+        <div className="flex-1 overflow-y-auto">
+          {!repoSlot ? (
+            <div className="flex items-center justify-center h-full text-zinc-600 text-[10px]">repo sync not yet run — press scan domains</div>
+          ) : (
+            <>
+              <div className="px-3 py-1.5 border-b border-zinc-800 flex items-center gap-3 text-[8px] text-zinc-500 flex-wrap">
+                <span className="uppercase tracking-wider">repo sync</span>
+                <span style={{ color: "#34d399" }}>{repoSlot.clean}/{repoSlot.total} clean</span>
+                {(repoSlot.ahead_list?.length ?? 0) > 0 && (
+                  <span className="text-amber-400">{repoSlot.ahead_list!.length} ahead</span>
+                )}
+                {(repoSlot.dirty_list?.length ?? 0) > 0 && (
+                  <span className="text-red-400">{repoSlot.dirty_list!.length} dirty</span>
+                )}
+                <span className="text-zinc-600">{repoSlot.with_docs}/{repoSlot.total} docs</span>
+                <span className="text-violet-500 font-mono ml-auto">score {repoSlot.score?.toFixed(4)}</span>
+              </div>
+              {(repoSlot.repos ?? []).map(r => {
+                const ahead = r.ahead > 0;
+                const dirty = r.dirty > 0;
+                const statusColor = dirty ? "#f87171" : ahead ? "#fbbf24" : "#34d399";
+                const shortCommit = r.last_commit ? r.last_commit.slice(8, 60) : "";
+                return (
+                  <div key={r.name} className="border-b border-zinc-900 px-3 py-1.5 flex items-center gap-2 hover:bg-zinc-900/20">
+                    <span style={{ color: statusColor }} className="text-[10px] shrink-0">{dirty ? "✗" : ahead ? "↑" : "✓"}</span>
+                    <span className="text-zinc-200 text-[9px] w-[160px] shrink-0 truncate">{r.name}</span>
+                    <span className="text-zinc-600 text-[7px] flex-1 truncate">{shortCommit}</span>
+                    {ahead && <span className="text-amber-500 text-[7px] shrink-0">+{r.ahead}</span>}
+                    {r.has_docs && <span className="text-zinc-700 text-[7px] shrink-0">docs</span>}
+                  </div>
+                );
+              })}
+            </>
+          )}
+        </div>
+      )}
+
+      {view !== "proposals" && view !== "dream" && view !== "mods" && view !== "repos" && (
       <div className="flex-1 overflow-y-auto">
         {displayed.map(goal => {
           const isActive = goal.id === store.active_goal;
