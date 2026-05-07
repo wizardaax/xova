@@ -147,6 +147,8 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [noteOpen,    setNoteOpen]    = useState<string | null>(null);  // goal id with open note input
   const [noteText,    setNoteText]    = useState("");
   const [noteSaving,  setNoteSaving]  = useState(false);
+  const [histOpen,    setHistOpen]    = useState<string | null>(null);  // goal id with expanded history
+  const [filterText,  setFilterText]  = useState("");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -334,6 +336,15 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     ? goals
     : [];
   displayed.sort((a, b) => b.priority - a.priority || b.updated_at - a.updated_at);
+  const filterLower = filterText.toLowerCase().trim();
+  const filteredGoals = filterLower
+    ? displayed.filter(g =>
+        g.text.toLowerCase().includes(filterLower) ||
+        g.owner.toLowerCase().includes(filterLower) ||
+        g.id.toLowerCase().includes(filterLower) ||
+        g.status.includes(filterLower)
+      )
+    : displayed;
 
   const statusCounts = goals.reduce((acc, g) => {
     acc[g.status] = (acc[g.status] ?? 0) + 1;
@@ -392,6 +403,22 @@ export function GoalState({ onClose }: { onClose: () => void }) {
             );
           })}
           <span className="text-zinc-700 ml-auto">{goals.length} total</span>
+        </div>
+      )}
+
+      {/* Filter bar — only in list views */}
+      {(view === "active" || view === "all") && (
+        <div className="px-3 py-1 border-b border-zinc-800/60 shrink-0 flex items-center gap-1.5">
+          <span className="text-zinc-700 text-[9px]">⌕</span>
+          <input
+            value={filterText}
+            onChange={e => setFilterText(e.target.value)}
+            placeholder="filter by text, owner, status…"
+            className="flex-1 bg-transparent text-[9px] text-zinc-300 placeholder:text-zinc-700 focus:outline-none min-w-0"
+          />
+          {filterText && (
+            <button onClick={() => setFilterText("")} className="text-zinc-600 hover:text-zinc-400 text-[9px] shrink-0">✕</button>
+          )}
         </div>
       )}
 
@@ -590,6 +617,28 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                       <text x={PAD + bw * entries.length + 2} y={CHART_H - 0.9711 * CHART_H + 2} fontSize="6" fill="#7c3aed">φ</text>
                     </svg>
                     <div className="text-zinc-700 text-[7px] mt-0.5">{evalHistory.length} evals · M=mesh T=mesh_test S=swarm · φ=0.9711</div>
+                    {/* Per-agent breakdown */}
+                    {(() => {
+                      const byAgent: Record<string, number[]> = {};
+                      evalHistory.forEach(e => { (byAgent[e.agent] ??= []).push(e.score); });
+                      return (
+                        <div className="flex gap-3 mt-1.5 flex-wrap">
+                          {Object.entries(byAgent).map(([agent, scores]) => {
+                            const avg = scores.reduce((s, v) => s + v, 0) / scores.length;
+                            const last = scores[scores.length - 1];
+                            const ABBR: Record<string, string> = { mesh: "M", mesh_test: "T", swarm: "S" };
+                            return (
+                              <div key={agent} className="flex items-center gap-1 text-[7px]">
+                                <span className="text-zinc-600 font-mono">{ABBR[agent] ?? agent}</span>
+                                <span className="text-zinc-600">n={scores.length}</span>
+                                <span className="font-mono" style={{ color: cohColor(avg) }}>avg {avg.toFixed(3)}</span>
+                                <span className="font-mono" style={{ color: cohColor(last) }}>last {last.toFixed(3)}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
           })()}
@@ -777,7 +826,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
 
       {view !== "proposals" && view !== "dream" && view !== "mods" && view !== "repos" && (
       <div className="flex-1 overflow-y-auto">
-        {displayed.map(goal => {
+        {filteredGoals.map(goal => {
           const isActive = goal.id === store.active_goal;
           return (
             <div key={goal.id}
@@ -793,7 +842,13 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                 <span className="text-zinc-600 text-[8px]">{goal.id}</span>
                 <span className="text-zinc-600 text-[8px]">{goal.owner}</span>
                 {goal.parent && <span className="text-zinc-600 text-[8px]">↳ {goal.parent.slice(0, 12)}</span>}
-                <span className="text-zinc-600 text-[8px] ml-auto">{goal.progress.length} notes</span>
+                <button
+                  onClick={() => setHistOpen(histOpen === goal.id ? null : goal.id)}
+                  className={`text-[8px] ml-auto px-1 rounded transition-colors ${
+                    histOpen === goal.id ? "text-zinc-300 bg-zinc-800" : "text-zinc-600 hover:text-zinc-400"
+                  }`}>
+                  {goal.progress.length} notes {histOpen === goal.id ? "▲" : "▼"}
+                </button>
               </div>
               {/* Per-goal coherence sparkline */}
               {(() => {
@@ -819,6 +874,23 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                   </div>
                 );
               })()}
+              {/* Expandable progress history */}
+              {histOpen === goal.id && goal.progress.length > 0 && (
+                <div className="mt-0.5 rounded border border-zinc-800 bg-zinc-900/50 divide-y divide-zinc-800/60">
+                  {goal.progress.slice(-8).reverse().map((p, i) => (
+                    <div key={i} className="flex gap-1.5 px-2 py-1 text-[8px]">
+                      <span className="text-zinc-700 shrink-0 w-[42px]">{fmtTs(p.ts)}</span>
+                      {p.coherence > 0 && (
+                        <span className="font-mono shrink-0 w-[32px]" style={{ color: cohColor(p.coherence) }}>
+                          {p.coherence.toFixed(3)}
+                        </span>
+                      )}
+                      <span className="text-zinc-500 shrink-0 w-[28px] truncate">{p.agent}</span>
+                      <span className="text-zinc-400 flex-1 min-w-0 truncate">{p.note}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
               {/* Action buttons */}
               <div className="flex gap-1 flex-wrap">
                 {goal.status !== "active" && (
@@ -871,8 +943,10 @@ export function GoalState({ onClose }: { onClose: () => void }) {
             </div>
           );
         })}
-        {displayed.length === 0 && !loading && (
-          <div className="flex-1 flex items-center justify-center text-zinc-600 py-8">no goals</div>
+        {filteredGoals.length === 0 && !loading && (
+          <div className="flex-1 flex items-center justify-center text-zinc-600 py-8">
+            {filterText ? `no goals matching "${filterText}"` : "no goals"}
+          </div>
         )}
       </div>
       )}

@@ -145,14 +145,6 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
     setCorpusRunning(false);
   }, []);
 
-  const runScanAll = useCallback(async () => {
-    setScanRunning(true);
-    try {
-      await xovaRun(CMD_SCAN_ALL);
-      setTimeout(() => { refresh(); setScanRunning(false); }, 35_000);
-    } catch { setScanRunning(false); }
-  }, [refresh]);
-
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -164,6 +156,14 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
     await loadHistory();
     setLoading(false);
   }, [loadHistory]);
+
+  const runScanAll = useCallback(async () => {
+    setScanRunning(true);
+    try {
+      await xovaRun(CMD_SCAN_ALL);
+      setTimeout(() => { refresh(); setScanRunning(false); }, 35_000);
+    } catch { setScanRunning(false); }
+  }, [refresh]);
 
   const runSweep = useCallback(async () => {
     setSweeping(true);
@@ -520,6 +520,40 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
                   <div className="text-violet-300 font-mono text-[10px]">{sweep.optimal.peak_thrust?.toExponential(3)} N</div>
                 </div>
               )}
+              {/* Quality vs k_factor line chart */}
+              {(() => {
+                const pts = sweep.sweep.filter(p => typeof p.quality === "number");
+                if (pts.length < 2) return null;
+                const CW = 320, CH = 56, cPad = { t: 6, r: 6, b: 14, l: 26 };
+                const cIW = CW - cPad.l - cPad.r, cIH = CH - cPad.t - cPad.b;
+                const ks = pts.map(p => p.k_factor);
+                const minK = Math.min(...ks), maxK = Math.max(...ks);
+                const qs = pts.map(p => p.quality!);
+                const minQ = 0, maxQ = 1;
+                const cx = (k: number) => cPad.l + ((k - minK) / (maxK - minK || 1)) * cIW;
+                const cy = (q: number) => cPad.t + (1 - (q - minQ) / (maxQ - minQ)) * cIH;
+                const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"}${cx(p.k_factor).toFixed(1)},${cy(p.quality!).toFixed(1)}`).join(" ");
+                const optK = sweep.optimal?.k_factor;
+                return (
+                  <svg viewBox={`0 0 ${CW} ${CH}`} width="100%" style={{ display: "block" }}>
+                    <rect x={cPad.l} y={cPad.t} width={cIW} height={cIH} fill="#18181b" rx="2" />
+                    {/* 0.8 quality threshold line */}
+                    <line x1={cPad.l} y1={cy(0.8)} x2={cPad.l + cIW} y2={cy(0.8)}
+                      stroke="#34d399" strokeWidth="0.5" strokeDasharray="2,2" opacity="0.4" />
+                    <text x={cPad.l - 2} y={cy(0.8) + 3} fontSize="5" fill="#34d399" textAnchor="end" opacity="0.6">0.8</text>
+                    <text x={cPad.l - 2} y={cy(0) + 3} fontSize="5" fill="#52525b" textAnchor="end">0</text>
+                    <text x={cPad.l - 2} y={cPad.t + 4} fontSize="5" fill="#52525b" textAnchor="end">1</text>
+                    <path d={pathD} fill="none" stroke="#a78bfa" strokeWidth="1.2" strokeLinejoin="round" />
+                    {pts.map((p, i) => {
+                      const col = (p.quality ?? 0) >= 0.8 ? "#34d399" : "#fbbf24";
+                      return <circle key={i} cx={cx(p.k_factor).toFixed(1)} cy={cy(p.quality!).toFixed(1)} r={p.k_factor === optK ? "3" : "1.5"} fill={col} />;
+                    })}
+                    <text x={cPad.l + 2} y={CH - 2} fontSize="5" fill="#52525b">{minK}×</text>
+                    <text x={cPad.l + cIW - 2} y={CH - 2} fontSize="5" fill="#52525b" textAnchor="end">{maxK}×</text>
+                    <text x={cPad.l + cIW / 2} y={CH - 2} fontSize="5" fill="#52525b" textAnchor="middle">k-factor</text>
+                  </svg>
+                );
+              })()}
               {/* Bar chart: k_factor vs peak_thrust */}
               <div className="space-y-0.5">
                 {sweep.sweep.map((pt, i) => {
