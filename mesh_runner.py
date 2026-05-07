@@ -1035,6 +1035,7 @@ def main() -> None:
         else:
             try:
                 result = cycle.run(goal)
+                _last_aeon_quality: float | None = None  # Sprint 6: AEON→UCB direct feedback
 
                 for r in result.results:
                     raw_agent        = r.get("agent", "agent-01")
@@ -1079,6 +1080,7 @@ def main() -> None:
                             "ts":             time.time(),
                         })
                         _log(f"aeon: quality={_aeon_quality:.3f} peak={_peak:.3e} n={_n_pts}")
+                        _last_aeon_quality = _aeon_quality
 
                 forge_alive, forge_weight = _read_forge_status()
                 node_count  = len(result.results) + (1 if forge_alive else 0)
@@ -1187,7 +1189,14 @@ def main() -> None:
                 # rotating goal is advancing the active master goal — giving the
                 # UCB selector a signal to favour goals that produce measurable
                 # progress, not just goals with high coherence.
-                if _eval_score_for_ucb > 0.0:
+                # Sprint 6: when goal_idx==0 (aeon thrust) and AEON ran this cycle,
+                # blend aeon quality directly into reward so the UCB selector
+                # learns to favour cycles with high AEON output quality.
+                if goal_idx == 0 and _last_aeon_quality is not None:
+                    reward = (0.45 * _coh_reward
+                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
+                              + 0.25 * _last_aeon_quality)
+                elif _eval_score_for_ucb > 0.0:
                     reward = 0.6 * _coh_reward + 0.4 * _eval_score_for_ucb
                 else:
                     reward = _coh_reward
@@ -1200,6 +1209,7 @@ def main() -> None:
                     "goal":         goal,
                     "coh_reward":   round(_coh_reward, 4),
                     "eval_score":   round(_eval_score_for_ucb, 4),
+                    "aeon_quality": round(_last_aeon_quality, 4) if _last_aeon_quality is not None else None,
                     "blended":      round(reward, 4),
                     "ts":           time.time(),
                 })
