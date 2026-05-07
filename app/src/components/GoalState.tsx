@@ -121,6 +121,13 @@ function fmtDate(ts: number): string {
   const d = new Date(ts > 1e10 ? ts : ts * 1000);
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
+function fmtAgo(ts: number): string {
+  const s = Math.round((Date.now() / 1000) - (ts > 1e10 ? ts / 1000 : ts));
+  if (s < 60) return `${s}s ago`;
+  if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}
 function cohColor(c: number): string {
   return c >= 0.8 ? "#34d399" : c >= 0.5 ? "#fbbf24" : c > 0 ? "#f87171" : "#52525b";
 }
@@ -1079,6 +1086,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-zinc-600 text-[8px]">{goal.id}</span>
                 <span className="text-zinc-600 text-[8px]">{goal.owner}</span>
+                <span className="text-zinc-700 text-[7px]">{fmtAgo(goal.updated_at)}</span>
                 {goal.parent && <span className="text-zinc-600 text-[8px]">↳ {goal.parent.slice(0, 12)}</span>}
                 <button
                   onClick={() => setHistOpen(histOpen === goal.id ? null : goal.id)}
