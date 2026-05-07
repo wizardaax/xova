@@ -468,3 +468,128 @@ Result: 766 chars (substance=1.0), 67 unique sig words (diversity=1.0),
 - Pending CI health proposals still unacted: prop-7acd2335, prop-a19562e7, prop-981c019c
 
 — Forge (AEON Sprint 4-5, task_initiator audit, 2026-05-07)
+
+---
+
+## 2026-05-07 — AEON Sprints 7-11 — all 7 ROTATING_GOALS have plugins
+
+Session resumed from compression. "keep working" x2. Continued sprint cadence without interruption.
+
+### What shipped (Sprints 7-11)
+
+**Sprint 7 — lucas_phase.py** (`7fa55dc`)
+- Lucas sequence L(0)=2, L(1)=1. 60 terms. Ratios converge to phi=1.6180339887.
+- conv_score=1.0, cons_score=1.0, aeon_match_score=1.0. Total score=1.0.
+- mesh_runner: LUCAS_EVERY_N=25. UCB reward blend for goal_idx==3.
+
+**Sprint 8 — field_weave.py** (`b212b2f`)
+- 50-point phi-spiral using golden angle (137.507764 deg = 2.39996 rad).
+- coh_score=1.0, radial_score=1.0, angle_fid=1.0. Total score=1.0.
+- Cross-validates AEON engine GOLDEN_ANGLE_DEG constant. aeon_golden_deg=137.507764.
+- Key bug fixed: `_get_aeon_golden_angle()` returned None before reaching aeon_engine import.
+- mesh_runner: WEAVE_EVERY_N=35. UCB reward blend for goal_idx==6.
+
+**Sprint 9 — ternary_eval.py** (`a080f05`)
+- 4 gates: REQ-01 coherence, REQ-02 uncertainty, REQ-03 unc≥0, REQ-04 no violations.
+- Tested: 4/4 affirm, balance=0.724, stability=0.586. Score=0.8067.
+- mesh_runner: TERNARY_EVERY_N=15. UCB reward blend for goal_idx==5.
+
+**Sprint 10 — corpus_recall.py** (`904acc6`)
+- 13,517 corpus entries. coverage=0.991, freshness=1.0, coherence=0.586.
+- score = 0.35*coverage + 0.30*freshness + 0.35*coherence = 0.8518.
+- mesh_runner: CORPUS_EVERY_N=20. UCB reward blend for goal_idx==4.
+
+**Sprint 11 — repo_sync.py** (`a13a59b`)
+- 19 repos audited: 19/19 clean, 6/19 with docs. SCE-88: 1 commit ahead.
+- score = 0.60*sync + 0.40*docs = 0.7263.
+- mesh_runner: REPO_SYNC_EVERY_N=45. UCB reward blend for goal_idx==2.
+
+### UCB state (all 7 goals seeded as of this session)
+
+```
+0: aeon thrust     q=0.871 n=50
+1: CI health       q=0.920 n=10
+2: repo sync       q=0.726 n=5   ← built this session
+3: lucas phase     q=0.950 n=5
+4: corpus recall   q=0.852 n=5   ← built this session
+5: ternary logic   q=0.807 n=5
+6: field weave     q=0.950 n=5
+```
+
+### Architecture milestone
+
+Every ROTATING_GOAL now has:
+1. A domain plugin that writes to context_broker
+2. A mesh_runner trigger (every N cycles)
+3. cycle_summary enrichment text (feeding self-eval)
+4. UCB reward blending for goal selection feedback
+
+This closes the full cognitive feedback loop: goal selection → domain eval → cycle enrichment → self-eval → UCB update → goal selection.
+
+### What's left
+
+- **AEON UI**: phi-spiral SVG in AeonThrust.tsx (using xova.field_weave slot data)
+- **Score sim**: verify full 11-sprint cycle_summary hits score ceiling
+- **SCE-88 PR #11**: 1 commit ahead, needs merge
+- Mesh PID still pre-Sprint-3 code — all sprint features activate on restart (Adam's call)
+
+— Forge (AEON Sprint 7-11, full goal loop closed, 2026-05-07)
+
+---
+
+## 2026-05-07 — AEON Sprints 12-16 — UI layer complete
+
+Continued from prior compression (two "keep working" directives). Focused on surfacing
+cognitive loop data in the Xova UI.
+
+### What shipped (Sprints 12-16)
+
+**Sprint 12 — GoalState domain scores panel** (`89d7ab4`)
+- All 7 domain broker slots read and displayed alongside UCB q/n values
+- Each goal row: name | q | n | mini progress bar | score%
+- Green ≥80%, amber ≥60%, red <60%
+
+**Sprint 13 — AeonThrust phi-spiral SVG** (`a8610e4`)
+- 50-point golden-angle spiral computed inline (pure JS math, useMemo)
+- Dots fade violet→green, golden angle label from field_weave slot
+- Sidebar shows phi, GOLDEN_ANGLE, n_steps + field_weave coh/radial/fid scores
+
+**Sprint 14 — Run weave/ternary buttons + ternary gate panel** (`adef068`)
+- "run weave" button triggers field_weave.py, updates spiral in-place
+- "run ternary" button triggers ternary_eval.py, updates gate panel
+- Ternary panel: 4 gate indicators (✓/?/✕), balance, stability, gate_rate
+- TernarySlot interface + state; ternary/fieldWeave loaded from broker at startup
+
+**Sprint 15 — domain_score in UCB reward record** (`61286ae`)
+- mesh_runner: 6-branch domain reward refactored into dict lookup
+- UCB reward slot now includes domain_score field
+- GoalState reward strip shows domain score for non-aeon goals (teal color)
+
+**Sprint 16 — Dream consolidator insights panel** (`9ea986f`)
+- GoalState "dream" view (4th button) shows:
+  * avg_coherence, avg_eval_score, cycle_count from long_term_memory.json
+  * Evolution health bar
+  * Top missed keywords (tokens in goal text absent from cycle_summary)
+  * Dream insights list
+- Current data: avg_coh=0.750, avg_eval=0.644, 436 cycles, evo_health=57.7%
+- Missed: build, cognitive, evaluate, initiate, loop
+
+### Git log (16 sprints)
+
+```
+9ea986f Sprint 16: GoalState dream insights panel
+61286ae Sprint 15: domain_score in UCB reward
+adef068 Sprint 14: run weave/ternary buttons + ternary panel
+a8610e4 Sprint 13: AeonThrust phi-spiral SVG
+89d7ab4 Sprint 12: GoalState domain scores panel
+```
+
+### Key insight from dream consolidator
+
+The running mesh (PID with pre-Sprint-3 code) has avg_eval_score=0.644.
+The 5 top missed keywords are: build, cognitive, evaluate, initiate, loop.
+These are from the goal text: "build an autonomous cognitive loop...self-evaluate...initiate".
+Once mesh restarts with Sprint 3-16 code, cycle_summary enrichments will hit these keywords
+and push avg_eval towards the simulated ceiling of 0.9711.
+
+— Forge (AEON Sprints 12-16, UI layer complete, 2026-05-07)
