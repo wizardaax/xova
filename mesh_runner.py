@@ -162,8 +162,10 @@ CURIOSITY_ENGINE    = r"C:\Xova\plugins\curiosity_engine.py"
 PERSONA_GOVERNOR    = r"C:\Xova\plugins\persona_governor.py"
 CIPHER_AGENT        = r"C:\Xova\plugins\cipher_agent.py"
 CORPUS_SIGNER       = r"C:\Xova\plugins\corpus_signer.py"
+CI_HEALTH           = r"C:\Xova\plugins\ci_health.py"
 SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
+CI_EVERY_N          = 30   # CI health scan every 30 cycles (~30 min)
 DREAM_EVERY_H       = 6    # dream consolidation every N hours
 CIPHER_EVERY_N      = 50   # cipher agent status every 50 cycles (~50 min)
 FEDERATION_EVERY_N  = 60   # cross-AI fact federation sync every 60 cycles (~1 hr)
@@ -265,6 +267,18 @@ def _run_curiosity_scan() -> None:
         )
     except Exception as exc:
         _log(f"curiosity scan error: {exc}")
+
+
+def _run_ci_health() -> None:
+    """Run ci_health.py in background — tests 700+ Snell-Vern tests, publishes score to broker."""
+    try:
+        subprocess.Popen(
+            [sys.executable, CI_HEALTH, "--action", "run"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"ci health error: {exc}")
 
 
 def _run_dream_consolidation() -> None:
@@ -1175,6 +1189,23 @@ def main() -> None:
                         _goal_kw.append(f"SCE-88 gate enforced · {_gc} outputs gated · constraint guardian bounds active · loop integrity preserved")
                     else:
                         _goal_kw.append("SCE-88 gate passed · all agent outputs within constraint bounds · guardian validated · loop integrity preserved")
+                    # CI health: read cached broker slot (written by background ci_health.py)
+                    try:
+                        with open(CONTEXT_BROKER, encoding="utf-8") as _cf:
+                            _cs = json.load(_cf)
+                        _ci = _cs.get("slots", {}).get("xova.ci_health", {})
+                        _ci_score = _ci.get("score")
+                        _ci_pass  = _ci.get("total_passed", 0)
+                        _ci_fail  = _ci.get("total_failed", 0)
+                        if _ci_score is not None:
+                            _ci_status = "healthy" if _ci_score >= 0.95 else "degraded"
+                            _goal_kw.append(
+                                f"CI pipeline {_ci_status} · {_ci_pass} tests passing"
+                                + (f" · {_ci_fail} failing" if _ci_fail else "")
+                                + f" · validate build quality score {_ci_score:.3f}"
+                            )
+                    except Exception:
+                        pass
                     _kw_str = " · ".join(_goal_kw)
                     cycle_summary = (
                         f"cycle {cycle_num} — {_kw_str + ' · ' if _kw_str else ''}"
@@ -1237,6 +1268,10 @@ def main() -> None:
         # Curiosity engine: proactive gap detection every CURIOSITY_EVERY_N cycles
         if cycle_num % CURIOSITY_EVERY_N == 0:
             _run_curiosity_scan()
+
+        # CI health: test-suite health scan every CI_EVERY_N cycles (~30 min)
+        if cycle_num % CI_EVERY_N == 0:
+            _run_ci_health()
 
         # Dream consolidation: distil 24h of data every DREAM_EVERY_H hours
         _run_dream_consolidation()
