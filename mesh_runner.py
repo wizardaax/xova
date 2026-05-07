@@ -163,9 +163,11 @@ PERSONA_GOVERNOR    = r"C:\Xova\plugins\persona_governor.py"
 CIPHER_AGENT        = r"C:\Xova\plugins\cipher_agent.py"
 CORPUS_SIGNER       = r"C:\Xova\plugins\corpus_signer.py"
 CI_HEALTH           = r"C:\Xova\plugins\ci_health.py"
+LUCAS_PHASE         = r"C:\Xova\plugins\lucas_phase.py"
 SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
 CI_EVERY_N          = 30   # CI health scan every 30 cycles (~30 min)
+LUCAS_EVERY_N       = 25   # Lucas phase analysis every 25 cycles (~25 min)
 DREAM_EVERY_H       = 6    # dream consolidation every N hours
 CIPHER_EVERY_N      = 50   # cipher agent status every 50 cycles (~50 min)
 FEDERATION_EVERY_N  = 60   # cross-AI fact federation sync every 60 cycles (~1 hr)
@@ -279,6 +281,18 @@ def _run_ci_health() -> None:
         )
     except Exception as exc:
         _log(f"ci health error: {exc}")
+
+
+def _run_lucas_phase() -> None:
+    """Run lucas_phase.py in background — phi convergence analysis, publishes score to broker."""
+    try:
+        subprocess.Popen(
+            [sys.executable, LUCAS_PHASE, "--action", "run"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"lucas phase error: {exc}")
 
 
 def _run_dream_consolidation() -> None:
@@ -1119,6 +1133,7 @@ def main() -> None:
                 # Base coherence reward; will be blended with self-eval below (Round 109)
                 _coh_reward = max(0.0, min(1.0, result.average_coherence - 0.1 * getattr(result, "gated_count", 0)))
                 _eval_score_for_ucb: float = 0.0
+                _last_lucas_score:   float | None = None  # Sprint 7: Lucas phase → UCB
 
                 # SCE-88: publish cycle coherence to context_broker for advisory gate
                 _write_context_slot("xova.sce88_status", {
@@ -1206,6 +1221,21 @@ def main() -> None:
                             )
                     except Exception:
                         pass
+                    # Lucas phase: phi convergence cross-validated with AEON constants
+                    try:
+                        with open(CONTEXT_BROKER, encoding="utf-8") as _lf:
+                            _ls = json.load(_lf)
+                        _lp = _ls.get("slots", {}).get("xova.lucas_phase", {})
+                        _lp_score = _lp.get("score")
+                        _lp_ratio = _lp.get("final_ratio")
+                        if _lp_score is not None:
+                            _last_lucas_score = _lp_score
+                            _goal_kw.append(
+                                f"Lucas fibonacci convergence validated · phi ratio {_lp_ratio:.8f}"
+                                f" · phase stability score {_lp_score:.3f} · binet identity verified"
+                            )
+                    except Exception:
+                        pass
                     _kw_str = " · ".join(_goal_kw)
                     cycle_summary = (
                         f"cycle {cycle_num} — {_kw_str + ' · ' if _kw_str else ''}"
@@ -1223,10 +1253,15 @@ def main() -> None:
                 # Sprint 6: when goal_idx==0 (aeon thrust) and AEON ran this cycle,
                 # blend aeon quality directly into reward so the UCB selector
                 # learns to favour cycles with high AEON output quality.
+                # Sprint 7: same for goal_idx==3 (Lucas phase) — blend lucas score.
                 if goal_idx == 0 and _last_aeon_quality is not None:
                     reward = (0.45 * _coh_reward
                               + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
                               + 0.25 * _last_aeon_quality)
+                elif goal_idx == 3 and _last_lucas_score is not None:
+                    reward = (0.45 * _coh_reward
+                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
+                              + 0.25 * _last_lucas_score)
                 elif _eval_score_for_ucb > 0.0:
                     reward = 0.6 * _coh_reward + 0.4 * _eval_score_for_ucb
                 else:
@@ -1272,6 +1307,10 @@ def main() -> None:
         # CI health: test-suite health scan every CI_EVERY_N cycles (~30 min)
         if cycle_num % CI_EVERY_N == 0:
             _run_ci_health()
+
+        # Lucas phase: phi convergence analysis every LUCAS_EVERY_N cycles (~25 min)
+        if cycle_num % LUCAS_EVERY_N == 0:
+            _run_lucas_phase()
 
         # Dream consolidation: distil 24h of data every DREAM_EVERY_H hours
         _run_dream_consolidation()
