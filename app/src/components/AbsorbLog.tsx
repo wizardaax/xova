@@ -98,7 +98,9 @@ export function AbsorbLog({ onClose }: { onClose: () => void }) {
     return () => clearInterval(id);
   }, [refresh]);
 
-  const shown = [...entries].reverse().slice(0, 50);
+  const [sigOnly, setSigOnly] = useState(false);
+  const filtered = sigOnly ? entries.filter(e => e.significance > 0) : entries;
+  const shown = [...filtered].reverse().slice(0, 50);
   const totalCycles = entries.length;
   const avgSig = entries.length
     ? (entries.reduce((s, e) => s + e.significance, 0) / entries.length).toFixed(2)
@@ -112,6 +114,10 @@ export function AbsorbLog({ onClose }: { onClose: () => void }) {
         <span className="text-[9px] uppercase tracking-wider text-zinc-500">
           Absorb Log{updatedAt ? ` · ${updatedAt}` : ""}
         </span>
+        <button onClick={() => setSigOnly(v => !v)}
+          className={`px-1.5 py-0.5 rounded border text-[8px] ${sigOnly ? "border-amber-600 text-amber-300 bg-amber-900/20" : "border-zinc-700 text-zinc-500"}`}>
+          sig&gt;0
+        </button>
         <button onClick={refresh} disabled={loading}
           className="ml-auto text-zinc-600 hover:text-zinc-300 disabled:opacity-40">↻</button>
         <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">✕</button>
