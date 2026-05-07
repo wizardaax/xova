@@ -8,6 +8,7 @@ const BROKER_PATH     = "C:\\Xova\\memory\\context_broker.json";
 const LTM_PATH        = "C:\\Xova\\memory\\long_term_memory.json";
 const GOAL_MGR        = `python "C:\\Xova\\plugins\\goal_manager.py"`;
 const GOAL_PROPOSER   = `python "C:\\Xova\\plugins\\goal_proposer.py"`;
+const DREAM_CMD       = `python "C:\\Xova\\plugins\\dream_consolidator.py" --action consolidate`;
 
 interface ProgressEntry {
   ts:        number;
@@ -96,6 +97,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [ucbReward,   setUcbReward]   = useState<UcbReward | null>(null);
   const [domainScores, setDomainScores] = useState<(number | null)[]>([]);
   const [ltmData,      setLtmData]      = useState<LtmData | null>(null);
+  const [dreamRunning, setDreamRunning] = useState(false);
   const [loading,     setLoading]     = useState(true);
   const [proposing,   setProposing]   = useState(false);
   const [newGoal,     setNewGoal]     = useState("");
@@ -204,6 +206,15 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const rejectProposal = useCallback(async (propId: string) => {
     await xovaRun(`${GOAL_PROPOSER} --action reject --id ${propId}`);
     await refresh();
+  }, [refresh]);
+
+  const runDream = useCallback(async () => {
+    setDreamRunning(true);
+    try {
+      await xovaRun(DREAM_CMD);
+      await refresh();
+    } catch { /**/ }
+    setDreamRunning(false);
   }, [refresh]);
 
   if (!store) return (
@@ -378,6 +389,13 @@ export function GoalState({ onClose }: { onClose: () => void }) {
       {/* Dream consolidator insights panel */}
       {view === "dream" && (
         <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[8px] text-zinc-600 uppercase tracking-wider">dream consolidator</span>
+            <button onClick={runDream} disabled={dreamRunning}
+              className="px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 text-[8px] hover:bg-zinc-800/40 disabled:opacity-40">
+              {dreamRunning ? "running…" : "run consolidate"}
+            </button>
+          </div>
           {!ltmData ? (
             <div className="text-zinc-600 text-[10px] text-center py-8">dream consolidator not yet run</div>
           ) : (
