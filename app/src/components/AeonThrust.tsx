@@ -38,6 +38,7 @@ interface CIHealth { ok: boolean; repos: CIRepo[]; total_passed: number; total_f
 interface FieldWeaveSlot { ok: boolean; score: number; golden_deg?: number; coh_score?: number; radial_score?: number; angle_fid?: number; ts: number }
 interface TernarySlot { ok: boolean; score: number; affirm: number; neutral: number; deny: number; ternary_balance: number; gate_rate: number; stability: number; ts: number }
 interface LucasSlot { ok: boolean; score: number; n_terms: number; final_ratio: number; conv_err: number; last_stdev: number; aeon_phi?: number; binet_ok?: boolean; seq_sample?: number[]; ts: number }
+interface CorpusSlot { ok: boolean; score: number; total: number; with_excerpt: number; coverage: number; freshness: number; coherence: number; fresh_7d: number; top_roots?: [string, number][]; top_exts?: [string, number][]; ts: number }
 
 export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [summary,    setSummary]    = useState<AeonSummary | null>(null);
@@ -51,6 +52,7 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [ternaryRunning, setTernaryRunning] = useState(false);
   const [lucasSlot,   setLucasSlot]   = useState<LucasSlot | null>(null);
   const [lucasRunning, setLucasRunning] = useState(false);
+  const [corpusSlot,  setCorpusSlot]  = useState<CorpusSlot | null>(null);
   const [err,        setErr]        = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [sweeping,   setSweeping]   = useState(false);
@@ -84,6 +86,8 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       if (te?.ok) setTernary(te);
       const lc = broker.slots?.["xova.lucas_phase"] as LucasSlot | undefined;
       if (lc?.ok) setLucasSlot(lc);
+      const cr = broker.slots?.["xova.corpus_recall"] as CorpusSlot | undefined;
+      if (cr?.ok) setCorpusSlot(cr);
     } catch { /**/ }
   }, []);
 
@@ -345,6 +349,41 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
               <div className="text-zinc-700 text-[8px]">no data — click run ternary</div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Corpus recall panel — shown in sim tab below ternary gate */}
+      {tab === "sim" && corpusSlot && (
+        <div className="mx-3 mb-3 rounded border border-zinc-800 bg-zinc-900/60 p-2 space-y-1.5 shrink-0">
+          <div className="flex items-center justify-between">
+            <span className="text-[8px] text-zinc-500 uppercase tracking-wider">corpus recall</span>
+            <span className="font-mono text-[8px]" style={{ color: corpusSlot.score >= 0.8 ? "#34d399" : corpusSlot.score >= 0.6 ? "#fbbf24" : "#f87171" }}>
+              {(corpusSlot.score * 100).toFixed(1)}%
+            </span>
+          </div>
+          <div className="flex gap-3 text-[8px] flex-wrap">
+            <span className="text-zinc-500">total <span className="text-zinc-200">{corpusSlot.total.toLocaleString()}</span></span>
+            <span className="text-zinc-500">cov <span className="text-emerald-300">{(corpusSlot.coverage * 100).toFixed(1)}%</span></span>
+            <span className="text-zinc-500">fresh <span className="text-emerald-300">{(corpusSlot.freshness * 100).toFixed(0)}%</span></span>
+            <span className="text-zinc-500">coh <span style={{ color: corpusSlot.coherence >= 0.7 ? "#34d399" : "#fbbf24" }}>{(corpusSlot.coherence * 100).toFixed(1)}%</span></span>
+          </div>
+          {(corpusSlot.top_roots?.length ?? 0) > 0 && (
+            <div className="flex flex-col gap-0.5">
+              {corpusSlot.top_roots!.slice(0, 3).map(([root, cnt]) => {
+                const short = root.replace(/^.*[\\/]/, "").slice(0, 24);
+                const pct = corpusSlot.total > 0 ? cnt / corpusSlot.total : 0;
+                return (
+                  <div key={root} className="flex items-center gap-1.5">
+                    <span className="text-zinc-600 text-[7px] w-[100px] shrink-0 truncate">{short}</span>
+                    <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-full bg-violet-600/60 rounded-full" style={{ width: `${pct * 100}%` }} />
+                    </div>
+                    <span className="text-zinc-600 text-[7px] w-[28px] text-right shrink-0">{cnt.toLocaleString()}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 
