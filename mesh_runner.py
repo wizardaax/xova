@@ -152,6 +152,9 @@ GOAL_MANAGER      = r"C:\Xova\plugins\goal_manager.py"
 GOAL_STORE        = r"C:\Xova\memory\goal_store.json"
 SELF_EVAL         = r"C:\Xova\plugins\self_eval.py"
 SELF_EVAL_STORE   = r"C:\Xova\memory\self_eval_store.json"
+GOAL_DECOMPOSER   = r"C:\Xova\plugins\goal_decomposer.py"
+DISPATCH_STORE    = r"C:\Xova\memory\swarm_dispatch.json"
+SWARM_INTERVAL    = 3600  # seconds between swarm decompositions for same goal
 
 
 def _load_active_goal() -> tuple[str | None, str | None]:
@@ -181,6 +184,35 @@ def _read_strategy(agent: str = "mesh") -> str:
         return s.get("strategy", "")
     except Exception:
         return ""
+
+
+def _should_decompose(goal_id: str) -> bool:
+    """True if we haven't decomposed this goal in the last SWARM_INTERVAL seconds."""
+    try:
+        if not os.path.isfile(DISPATCH_STORE):
+            return True
+        with open(DISPATCH_STORE, encoding="utf-8") as fh:
+            d = json.load(fh)
+        if d.get("goal_id") != goal_id:
+            return True
+        return (time.time() - d.get("dispatched_at", 0)) > SWARM_INTERVAL
+    except Exception:
+        return True
+
+
+def _run_decompose(goal_id: str) -> None:
+    """Fire swarm decomposition in background — non-blocking."""
+    try:
+        subprocess.Popen(
+            [sys.executable, GOAL_DECOMPOSER,
+             "--action", "decompose",
+             "--goal-id", goal_id],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        _log(f"swarm: decomposition dispatched for {goal_id}")
+    except Exception as exc:
+        _log(f"swarm decompose error: {exc}")
 
 
 def _run_self_eval(output: str, goal: str, goal_id: str, agent: str = "mesh") -> float:
@@ -623,6 +655,9 @@ def main() -> None:
         active_goal_id, active_goal_text = _load_active_goal()
         goal_idx = _ucb_select_goal(ucb_state, ucb_t)
         if active_goal_text:
+            # Kick off swarm decomposition if due (once per hour, non-blocking)
+            if active_goal_id and _should_decompose(active_goal_id):
+                _run_decompose(active_goal_id)
             # Prepend self-eval strategy so the agent adjusts its approach
             strategy = _read_strategy("mesh")
             goal = (f"[strategy: {strategy}] {active_goal_text}"
