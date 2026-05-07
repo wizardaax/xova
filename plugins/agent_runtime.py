@@ -387,12 +387,16 @@ def run_cycle(agent: str) -> dict:
 # ── main ───────────────────────────────────────────────────────────────────────
 def main() -> None:
     ap = argparse.ArgumentParser(description="Continuous agent work loop")
-    ap.add_argument("--agent",    required=True, choices=list(AGENT_DOMAIN.keys()))
-    ap.add_argument("--interval", type=int, default=DEFAULT_INTERVAL)
-    ap.add_argument("--run-once", action="store_true")
+    ap.add_argument("--agent",       required=True, choices=list(AGENT_DOMAIN.keys()))
+    ap.add_argument("--interval",    type=int, default=DEFAULT_INTERVAL)
+    ap.add_argument("--run-once",    action="store_true")
+    ap.add_argument("--start-delay", type=int, default=0, help="seconds to sleep before first cycle")
     args = ap.parse_args()
 
     sys.stdout.reconfigure(encoding="utf-8")
+
+    if args.start_delay:
+        time.sleep(args.start_delay)
 
     if args.run_once:
         result = run_cycle(args.agent)
