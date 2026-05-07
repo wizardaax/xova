@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 const CMD_SUMMARY  = `python "C:\\Xova\\plugins\\aeon_summary.py"`;
 const CMD_SWEEP    = `python "C:\\Xova\\plugins\\aeon_sweep.py"`;
+const CMD_CI       = `python "C:\\Xova\\plugins\\ci_health.py" --action run`;
 const RUN_LOG_PATH = "C:\\Xova\\memory\\aeon_run_log.jsonl";
 const BROKER_PATH  = "C:\\Xova\\memory\\context_broker.json";
 const W = 360, H = 100, PAD = { t: 6, r: 6, b: 18, l: 6 };
@@ -25,16 +26,20 @@ interface SweepResult {
   ok: boolean; k_base: number; n_points: number; sweep: SweepPoint[]; optimal?: SweepPoint;
 }
 interface RunRecord { ts: number; quality?: number; peak_thrust?: number; n_steps?: number; validated?: boolean }
+interface CIRepo { name: string; ok: boolean; passed: number; failed: number; errors: number; duration_s: number; error?: string }
+interface CIHealth { ok: boolean; repos: CIRepo[]; total_passed: number; total_failed: number; total_errors: number; score: number; duration_s: number; ts: number }
 
 export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [summary,    setSummary]    = useState<AeonSummary | null>(null);
   const [sweep,      setSweep]      = useState<SweepResult | null>(null);
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
+  const [ciHealth,   setCiHealth]   = useState<CIHealth | null>(null);
+  const [ciRunning,  setCiRunning]  = useState(false);
   const [err,        setErr]        = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [sweeping,   setSweeping]   = useState(false);
   const [updatedAt,  setUpdatedAt]  = useState("");
-  const [tab,        setTab]        = useState<"sim" | "sweep" | "history">("sim");
+  const [tab,        setTab]        = useState<"sim" | "sweep" | "history" | "ci">("sim");
 
   async function xovaRun(cmd: string): Promise<string> {
     const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
@@ -49,13 +54,25 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       const records: RunRecord[] = lines.map(l => { try { return JSON.parse(l) as RunRecord; } catch { return null; } }).filter(Boolean) as RunRecord[];
       setRunHistory(records);
     } catch { setRunHistory([]); }
-    // Also try loading sweep from broker
+    // Also try loading sweep + CI health from broker
     try {
       const bRaw = await invoke<string>("xova_read_file", { path: BROKER_PATH });
       const broker = JSON.parse(bRaw) as { slots?: Record<string, unknown> };
       const s = broker.slots?.["xova.aeon_sweep_result"] as SweepResult | undefined;
       if (s?.ok) setSweep(s);
+      const ci = broker.slots?.["xova.ci_health"] as CIHealth | undefined;
+      if (ci?.ok) setCiHealth(ci);
     } catch { /**/ }
+  }, []);
+
+  const runCI = useCallback(async () => {
+    setCiRunning(true);
+    try {
+      const stdout = await xovaRun(CMD_CI);
+      const parsed = JSON.parse(stdout) as CIHealth;
+      if (parsed.ok) { setCiHealth(parsed); setTab("ci"); }
+    } catch { /**/ }
+    setCiRunning(false);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -101,10 +118,10 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800 shrink-0">
         <span className="text-[9px] uppercase tracking-wider text-zinc-500">AEON{updatedAt ? ` · ${updatedAt}` : ""}</span>
         <div className="flex gap-1 ml-auto">
-          {(["sim", "sweep", "history"] as const).map(t => (
+          {(["sim", "sweep", "history", "ci"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-2 py-0.5 rounded border text-[8px] transition-colors ${tab === t ? "border-violet-600 text-violet-300 bg-violet-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}>
-              {t}
+              {t === "ci" && ciHealth ? (ciHealth.total_failed || ciHealth.total_errors ? "⚠ci" : "✓ci") : t}
             </button>
           ))}
         </div>
@@ -261,6 +278,51 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
                   </div>
                 ))}
               </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* CI Health tab */}
+      {tab === "ci" && (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {!ciHealth ? (
+            <div className="flex flex-col items-center justify-center h-full gap-3 py-8">
+              <span className="text-zinc-500 text-[10px] text-center">Run pytest on 3 Snell-Vern repos<br/>~15s · publishes results to context broker</span>
+              <button onClick={runCI} disabled={ciRunning}
+                className="px-3 py-1.5 rounded border border-violet-700 text-violet-300 text-[10px] hover:bg-violet-900/30 disabled:opacity-40">
+                {ciRunning ? "scanning…" : "run CI scan"}
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Score bar */}
+              <div className={`rounded p-2 text-center border ${ciHealth.score >= 0.95 ? "bg-emerald-900/30 border-emerald-700 text-emerald-300" : "bg-amber-900/30 border-amber-700 text-amber-300"}`}>
+                <div className="text-[8px] text-zinc-500 mb-0.5">CI health score</div>
+                <div className="font-bold text-[14px]">{(ciHealth.score * 100).toFixed(1)}%</div>
+                <div className="text-[9px] opacity-70">{ciHealth.total_passed} passed · {ciHealth.total_failed} failed · {ciHealth.duration_s.toFixed(1)}s</div>
+              </div>
+              {/* Per-repo table */}
+              <div className="space-y-0.5">
+                {ciHealth.repos.map((r, i) => (
+                  <div key={i} className="flex items-center gap-2 text-[9px] border-b border-zinc-900 py-1">
+                    <span className={`shrink-0 ${r.ok && !r.failed && !r.errors ? "text-emerald-500" : "text-amber-400"}`}>
+                      {r.ok && !r.failed && !r.errors ? "✓" : "⚠"}
+                    </span>
+                    <span className="text-zinc-400 flex-1 truncate">{r.name}</span>
+                    <span className="text-zinc-300 font-mono">{r.passed}✓</span>
+                    {(r.failed > 0) && <span className="text-red-400">{r.failed}✗</span>}
+                    <span className="text-zinc-600">{r.duration_s.toFixed(1)}s</span>
+                  </div>
+                ))}
+              </div>
+              <div className="text-[8px] text-zinc-600 text-center">
+                last scan {new Date(ciHealth.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+              </div>
+              <button onClick={runCI} disabled={ciRunning}
+                className="w-full py-1 rounded border border-zinc-700 text-zinc-500 text-[9px] hover:border-violet-700 hover:text-violet-400">
+                {ciRunning ? "scanning…" : "re-run scan ↻"}
+              </button>
             </>
           )}
         </div>
