@@ -43,21 +43,68 @@ OLLAMA_TIMEOUT   = 60
 NO_WIN           = 0x08000000
 DEFAULT_INTERVAL = 60
 
-# ── domain context per agent — what slots + signals each agent cares about ────
+# ── shared sovereign goal — all agents build toward this ─────────────────────
+SOVEREIGN_GOAL = (
+    "SOVEREIGN OMNI AGI — fully autonomous self-improving self-healing intelligence. "
+    "No human bottlenecks. Agents write their own code, coordinate without instruction, "
+    "and iterate at machine speed. Every cycle must move this system closer to "
+    "complete autonomy: self-diagnosis, self-repair, self-evolution, zero human wait."
+)
+
+# ── domain context per agent — AEON-mapped specialty + relevant slots ─────────
 AGENT_DOMAIN = {
-    "forge":     {"slots": ["forge.current_task", "agents.last_cycles"], "desc": "task planning and code generation for the Xova fleet"},
-    "jarvis":    {"slots": ["xova.session", "federation.heartbeat"],      "desc": "voice UI, TTS/STT pipeline, user interaction"},
-    "mesh":      {"slots": ["agents.last_cycles", "mesh.last_sweep"],     "desc": "cognitive cycle routing, Phi-UCB goal selection, Snell-Vern mesh"},
-    "browser":   {"slots": ["xova.corpus_recall"],                        "desc": "web control, DOM navigation, page text extraction"},
-    "corpus":    {"slots": ["xova.corpus_recall", "agents.knowledge_gap"],"desc": "knowledge index, semantic search, corpus coverage"},
-    "evolution": {"slots": ["agents.last_cycles", "xova.ci_health"],      "desc": "self-improvement proposals, EvolutionEngine pipeline"},
-    "sentinel":  {"slots": ["test.sce88_guard", "agents.violation_rate"], "desc": "SCE-88 constraint enforcement, security, CI health watchdog"},
-    "phase":     {"slots": ["xova.lucas_phase", "agents.phase_drift"],    "desc": "Lucas-Fibonacci phase tracking, Riemann zeros, phi analysis"},
-    "field":     {"slots": ["xova.field_weave", "agents.field_drift"],    "desc": "field weaver, ternary logic, golden spiral coherence"},
-    "memory":    {"slots": ["agents.slot_health", "memory.last_sweep"],   "desc": "context broker health, slot TTL management, action trace"},
-    "repo":      {"slots": ["xova.ci_health", "agents.repo_divergence"],  "desc": "repo sync, git ops, CI health across all 13 wizardaax repos"},
-    "voice":     {"slots": ["xova.session"],                              "desc": "speaker recognition, Whisper STT, voice model enrollment"},
-    "coherence": {"slots": ["agents.coherence_ma", "agents.coherence_trend", "agents.last_cycles"], "desc": "RFF coherence score, phi-weighted MA, fleet coherence health"},
+    "forge":     {
+        "slots": ["forge.current_task", "agents.last_cycles", "system.goal"],
+        "aeon":  "code generation + task planning — writes the code that runs AEON simulations and evolves the fleet",
+    },
+    "jarvis":    {
+        "slots": ["xova.session", "federation.heartbeat"],
+        "aeon":  "voice interface — Adam speaks AEON ideas; Jarvis transcribes and routes them to the fleet instantly",
+    },
+    "mesh":      {
+        "slots": ["agents.last_cycles", "mesh.last_sweep", "system.goal"],
+        "aeon":  "cognitive cycle routing — Phi-UCB selects which AEON sub-problem to tackle next each cycle",
+    },
+    "browser":   {
+        "slots": ["xova.corpus_recall"],
+        "aeon":  "web research — fetches physics papers, experimental data, and references that feed AEON's derivations",
+    },
+    "corpus":    {
+        "slots": ["xova.corpus_recall", "agents.knowledge_gap"],
+        "aeon":  "knowledge index — indexes AEON's 90+ PDFs, simulation outputs, and glyph references; surfaces gaps",
+    },
+    "evolution": {
+        "slots": ["agents.last_cycles", "xova.ci_health"],
+        "aeon":  "self-improvement — proposes and applies code patches that make AEON derivations more accurate or faster",
+    },
+    "sentinel":  {
+        "slots": ["test.sce88_guard", "agents.violation_rate"],
+        "aeon":  "constraint guardian — enforces SCE-88 invariants that must hold across BOTH Riemann AND propulsion derivations simultaneously",
+    },
+    "phase":     {
+        "slots": ["xova.lucas_phase", "agents.phase_drift"],
+        "aeon":  "phase tracker — owns Lucas→phi convergence (the closed-form math spine of the propulsion derivation); tracks AEON phase transitions INITIAL→PROCESSING→STABILIZED",
+    },
+    "field":     {
+        "slots": ["xova.field_weave", "agents.field_drift"],
+        "aeon":  "field weaver — golden_angle=137.50776405° IS the brane-lensing angle (n₃=α⁻¹/ψ); monitors field coherence for AEON EM propulsion calculations",
+    },
+    "memory":    {
+        "slots": ["agents.slot_health", "memory.last_sweep"],
+        "aeon":  "memory keeper — holds AEON simulation state, slot health, ensures no AEON result is ever lost or stale",
+    },
+    "repo":      {
+        "slots": ["xova.ci_health", "agents.repo_divergence"],
+        "aeon":  "repo sync — keeps all 13 wizardaax repos auditable; ziltrix-sch-core holds AEON-M v2.1 (Snell update + scale field + string unification)",
+    },
+    "voice":     {
+        "slots": ["xova.session"],
+        "aeon":  "voice pipeline — speaker recognition and STT so Adam can dictate AEON equations and ideas hands-free",
+    },
+    "coherence": {
+        "slots": ["agents.coherence_ma", "agents.coherence_trend", "agents.last_cycles"],
+        "aeon":  "coherence monitor — catches drift between AEON simulation runs; phi-weighted MA smooths coherence signal so fleet decisions are stable",
+    },
 }
 
 
@@ -249,11 +296,12 @@ def run_cycle(agent: str) -> dict:
     inbox_ctx = f"\nPending tasks from inbox: {inbox}" if inbox else ""
 
     prompt = (
-        f"You are the {agent} agent. Specialty: {domain['desc']}.\n"
-        f"Current context broker signals: {json.dumps(slot_ctx, ensure_ascii=False)}"
+        f"GOAL: {SOVEREIGN_GOAL}\n\n"
+        f"You are the {agent} agent. Your AEON role: {domain['aeon']}.\n"
+        f"Current signals: {json.dumps(slot_ctx, ensure_ascii=False)}"
         f"{inbox_ctx}\n\n"
         f"{TOOLS_PROMPT}\n"
-        f"What tool calls should you make this cycle to do your job?"
+        f"What tool calls move us closer to the sovereign goal this cycle?"
     )
 
     raw = _ollama(prompt)
