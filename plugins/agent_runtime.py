@@ -367,6 +367,13 @@ def run_cycle(agent: str) -> dict:
     _tool_trace("run", f"agent_runtime.{agent}",
                 f"{agent} cycle complete: {done_summary[:120] or 'ok'}")
 
+    # Always report to Xova — agents work as a team, Xova sees everything
+    report_text = (
+        f"[{agent}] {done_summary or 'cycle ok'} "
+        f"(tools={len(results)} inbox={len(inbox)})"
+    )
+    _tool_report(report_text)
+
     return {
         "ok":      True,
         "agent":   agent,
