@@ -148,6 +148,40 @@ def _ucb_update(state: list[dict], idx: int, reward: float) -> None:
 FLAGS_PATH        = r"C:\Xova\memory\mesh_flags.json"
 CONTEXT_BROKER    = r"C:\Xova\memory\context_broker.json"
 SCE88_GATE        = r"C:\Xova\plugins\sce88_gate.py"
+GOAL_MANAGER      = r"C:\Xova\plugins\goal_manager.py"
+GOAL_STORE        = r"C:\Xova\memory\goal_store.json"
+
+
+def _load_active_goal() -> tuple[str | None, str | None]:
+    """Return (goal_id, goal_text) for the current active goal, or (None, None)."""
+    try:
+        if not os.path.isfile(GOAL_STORE):
+            return None, None
+        with open(GOAL_STORE, encoding="utf-8") as fh:
+            store = json.load(fh)
+        gid = store.get("active_goal")
+        if not gid:
+            return None, None
+        goal = store["goals"].get(gid, {})
+        return gid, goal.get("text")
+    except Exception:
+        return None, None
+
+
+def _write_goal_progress(gid: str, note: str, coherence: float) -> None:
+    try:
+        subprocess.run(
+            [sys.executable, GOAL_MANAGER,
+             "--action", "progress",
+             "--id",    gid,
+             "--note",  note[:400],
+             "--coherence", str(round(coherence, 4)),
+             "--agent", "mesh"],
+            capture_output=True, text=True, timeout=5,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        pass
 
 
 def _write_context_slot(key: str, value: object, agent: str = "mesh") -> None:
@@ -552,8 +586,14 @@ def main() -> None:
             time.sleep(CYCLE_INTERVAL)
             continue
 
-        goal_idx  = _ucb_select_goal(ucb_state, ucb_t)
-        goal      = ROTATING_GOALS[goal_idx]
+        active_goal_id, active_goal_text = _load_active_goal()
+        if active_goal_text:
+            goal     = active_goal_text
+            goal_idx = _ucb_select_goal(ucb_state, ucb_t)  # still update UCB for reward tracking
+        else:
+            goal_idx = _ucb_select_goal(ucb_state, ucb_t)
+            goal     = ROTATING_GOALS[goal_idx]
+            active_goal_id = None
         cycle_num += 1
 
         _append({
@@ -623,6 +663,14 @@ def main() -> None:
                     "goal":        goal,
                     "ts":          time.time(),
                 })
+
+                # Persistent goal: write progress note
+                if active_goal_id:
+                    _write_goal_progress(
+                        active_goal_id,
+                        f"cycle {cycle_num} — avg coh {result.average_coherence:.3f} · phase {cycle._derive_phase().lower()}",
+                        result.average_coherence,
+                    )
 
             except Exception as exc:
                 _append({

@@ -1,0 +1,243 @@
+import { useState, useEffect, useCallback } from "react";
+import { invoke } from "@tauri-apps/api/core";
+
+const GOAL_STORE  = "C:\\Xova\\memory\\goal_store.json";
+const GOAL_MGR    = `python "C:\\Xova\\plugins\\goal_manager.py"`;
+
+interface ProgressEntry {
+  ts:        number;
+  note:      string;
+  coherence: number;
+  agent:     string;
+}
+interface Goal {
+  id:         string;
+  text:       string;
+  priority:   number;
+  status:     "active" | "paused" | "completed" | "failed";
+  owner:      string;
+  parent:     string | null;
+  created_at: number;
+  updated_at: number;
+  progress:   ProgressEntry[];
+}
+interface GoalStore {
+  active_goal: string | null;
+  goals: Record<string, Goal>;
+}
+
+async function xovaRun(cmd: string): Promise<string> {
+  const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
+  try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout !== undefined) return w.stdout; } catch { /**/ }
+  return raw;
+}
+
+function fmtTs(ts: number): string {
+  const d = new Date(ts > 1e10 ? ts : ts * 1000);
+  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+function fmtDate(ts: number): string {
+  const d = new Date(ts > 1e10 ? ts : ts * 1000);
+  return d.toLocaleDateString([], { month: "short", day: "numeric" });
+}
+function cohColor(c: number): string {
+  return c >= 0.8 ? "#34d399" : c >= 0.5 ? "#fbbf24" : c > 0 ? "#f87171" : "#52525b";
+}
+
+const STATUS_STYLE: Record<string, string> = {
+  active:    "bg-emerald-900/40 text-emerald-300 border-emerald-700",
+  paused:    "bg-amber-900/40 text-amber-300 border-amber-700",
+  completed: "bg-blue-900/40 text-blue-300 border-blue-700",
+  failed:    "bg-red-900/40 text-red-300 border-red-700",
+};
+
+export function GoalState({ onClose }: { onClose: () => void }) {
+  const [store,     setStore]     = useState<GoalStore | null>(null);
+  const [loading,   setLoading]   = useState(true);
+  const [newGoal,   setNewGoal]   = useState("");
+  const [saving,    setSaving]    = useState(false);
+  const [updatedAt, setUpdatedAt] = useState("");
+  const [view,      setView]      = useState<"active" | "all">("active");
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const raw = await invoke<string>("xova_read_file", { path: GOAL_STORE });
+      setStore(JSON.parse(raw) as GoalStore);
+      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    } catch {
+      setStore({ active_goal: null, goals: {} });
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const id = setInterval(refresh, 8_000);
+    return () => clearInterval(id);
+  }, [refresh]);
+
+  const addGoal = useCallback(async () => {
+    const text = newGoal.trim();
+    if (!text) return;
+    setSaving(true);
+    try {
+      await xovaRun(`${GOAL_MGR} --action set --text "${text.replace(/"/g, '\\"')}" --owner mesh`);
+      setNewGoal("");
+      await refresh();
+    } catch { /**/ }
+    setSaving(false);
+  }, [newGoal, refresh]);
+
+  const activate = useCallback(async (id: string) => {
+    await xovaRun(`${GOAL_MGR} --action activate --id ${id}`);
+    await refresh();
+  }, [refresh]);
+
+  const complete = useCallback(async (id: string) => {
+    await xovaRun(`${GOAL_MGR} --action complete --id ${id}`);
+    await refresh();
+  }, [refresh]);
+
+  const pause = useCallback(async (id: string) => {
+    await xovaRun(`${GOAL_MGR} --action pause --id ${id}`);
+    await refresh();
+  }, [refresh]);
+
+  if (!store) return (
+    <div className="flex-1 flex items-center justify-center text-zinc-600 font-mono text-[11px]">
+      {loading ? "loading…" : "no goal store"}
+    </div>
+  );
+
+  const goals     = Object.values(store.goals);
+  const active    = store.active_goal ? store.goals[store.active_goal] : null;
+  const displayed = view === "active"
+    ? goals.filter(g => g.status === "active")
+    : goals;
+  displayed.sort((a, b) => b.priority - a.priority || b.updated_at - a.updated_at);
+
+  return (
+    <div className="flex flex-col h-full bg-zinc-950 text-zinc-300 font-mono text-[11px]">
+
+      {/* Header */}
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800 shrink-0 flex-wrap">
+        <span className="text-[9px] uppercase tracking-wider text-zinc-500">
+          Goals{updatedAt ? ` · ${updatedAt}` : ""}
+        </span>
+        <div className="flex gap-1 ml-auto">
+          {(["active", "all"] as const).map(v => (
+            <button key={v} onClick={() => setView(v)}
+              className={`px-2 py-0.5 rounded border text-[9px] transition-colors ${
+                view === v ? "border-emerald-600 text-emerald-300 bg-emerald-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"
+              }`}>
+              {v}
+            </button>
+          ))}
+        </div>
+        <button onClick={refresh} disabled={loading} className="text-zinc-600 hover:text-zinc-300 disabled:opacity-40">↻</button>
+        <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">✕</button>
+      </div>
+
+      {/* Active goal hero */}
+      {active && (
+        <div className="px-3 py-2 border-b border-zinc-800 shrink-0 bg-emerald-950/10">
+          <div className="text-[9px] uppercase tracking-wider text-emerald-600 mb-1">active goal</div>
+          <div className="text-zinc-100 text-[11px] leading-snug mb-1.5">{active.text}</div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[8px] text-zinc-500">{active.id}</span>
+            <span className="text-[8px] text-zinc-500">owner: {active.owner}</span>
+            <span className="text-[8px] text-zinc-500">p{active.priority}</span>
+            <span className="text-[8px] text-zinc-500 ml-auto">
+              {active.progress.length} notes · updated {fmtDate(active.updated_at)} {fmtTs(active.updated_at)}
+            </span>
+          </div>
+          {/* Last 3 progress entries */}
+          {active.progress.length > 0 && (
+            <div className="mt-1.5 space-y-0.5 max-h-[90px] overflow-y-auto">
+              {active.progress.slice(-5).reverse().map((p, i) => (
+                <div key={i} className="flex gap-1.5 text-[9px]">
+                  <span className="text-zinc-600 shrink-0">{fmtTs(p.ts)}</span>
+                  <span className="text-[8px] font-bold" style={{ color: cohColor(p.coherence) }}>
+                    {p.coherence > 0 ? p.coherence.toFixed(3) : ""}
+                  </span>
+                  <span className="text-zinc-500 truncate">{p.note}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Goal list */}
+      <div className="flex-1 overflow-y-auto">
+        {displayed.map(goal => {
+          const isActive = goal.id === store.active_goal;
+          return (
+            <div key={goal.id}
+              className={`border-b border-zinc-900 px-3 py-2 space-y-1 hover:bg-zinc-900/30 ${isActive ? "bg-emerald-950/10" : ""}`}>
+              <div className="flex items-start gap-2">
+                <span className={`shrink-0 mt-0.5 text-[8px] px-1 py-0.5 rounded border font-mono uppercase tracking-wider ${STATUS_STYLE[goal.status] ?? ""}`}>
+                  {goal.status}
+                </span>
+                <span className="text-zinc-200 text-[10px] leading-snug flex-1">{goal.text}</span>
+                <span className="text-zinc-600 text-[8px] shrink-0">p{goal.priority}</span>
+              </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-zinc-600 text-[8px]">{goal.id}</span>
+                <span className="text-zinc-600 text-[8px]">{goal.owner}</span>
+                {goal.parent && <span className="text-zinc-600 text-[8px]">↳ {goal.parent.slice(0, 12)}</span>}
+                <span className="text-zinc-600 text-[8px] ml-auto">{goal.progress.length} notes</span>
+              </div>
+              {/* Action buttons */}
+              <div className="flex gap-1">
+                {goal.status !== "active" && (
+                  <button onClick={() => activate(goal.id)}
+                    className="text-[8px] px-1.5 py-0.5 rounded border border-emerald-700 text-emerald-400 hover:bg-emerald-900/30">
+                    activate
+                  </button>
+                )}
+                {goal.status === "active" && !isActive && (
+                  <button onClick={() => activate(goal.id)}
+                    className="text-[8px] px-1.5 py-0.5 rounded border border-emerald-700 text-emerald-400 hover:bg-emerald-900/30">
+                    make active
+                  </button>
+                )}
+                {goal.status === "active" && (
+                  <button onClick={() => pause(goal.id)}
+                    className="text-[8px] px-1.5 py-0.5 rounded border border-amber-700 text-amber-400 hover:bg-amber-900/30">
+                    pause
+                  </button>
+                )}
+                {(goal.status === "active" || goal.status === "paused") && (
+                  <button onClick={() => complete(goal.id)}
+                    className="text-[8px] px-1.5 py-0.5 rounded border border-blue-700 text-blue-400 hover:bg-blue-900/30">
+                    complete
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        {displayed.length === 0 && !loading && (
+          <div className="flex-1 flex items-center justify-center text-zinc-600 py-8">no goals</div>
+        )}
+      </div>
+
+      {/* New goal input */}
+      <div className="border-t border-zinc-800 p-2 shrink-0 flex gap-1">
+        <input
+          value={newGoal}
+          onChange={e => setNewGoal(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addGoal(); } }}
+          placeholder="new goal…"
+          className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-[10px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-emerald-600 min-w-0"
+        />
+        <button onClick={addGoal} disabled={saving || !newGoal.trim()}
+          className="px-2 py-1 rounded bg-emerald-900/40 border border-emerald-700 text-emerald-300 text-[10px] hover:bg-emerald-800/40 disabled:opacity-40 shrink-0">
+          {saving ? "…" : "+"}
+        </button>
+      </div>
+    </div>
+  );
+}

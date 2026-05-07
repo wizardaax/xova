@@ -1157,6 +1157,7 @@ function App() {
     if (slash === "/phones") { setDockTab((t) => t === "phones" ? null : "phones"); return; }
     if (slash === "/memory") { setDockTab((t) => t === "memory" ? null : "memory"); return; }
     if (slash === "/sentinel" || slash === "/sentinellog") { setDockTab((t) => t === ("sentinellog" as never) ? null : ("sentinellog" as never)); return; }
+    if (slash === "/goal" || slash === "/goals") { setDockTab((t) => t === ("goalstate" as never) ? null : ("goalstate" as never)); return; }
     if (slash === "/federation") { setDockTab((t) => t === ("federation" as never) ? null : ("federation" as never)); return; }
     if (slash === "/sce88") { setDockTab((t) => t === ("sce88" as never) ? null : ("sce88" as never)); return; }
     if (slash === "/ctxbroker" || slash === "/broker") { setDockTab((t) => t === ("ctxbroker" as never) ? null : ("ctxbroker" as never)); return; }

@@ -70,6 +70,8 @@ SCE88_GATE        = r"C:\Xova\plugins\sce88_gate.py"
 CONTEXT_BROKER_STORE = r"C:\Xova\memory\context_broker.json"
 VIOLATIONS_LOG    = r"C:\Xova\memory\sentinel_violations.jsonl"
 VIOLATIONS_CAP    = 1000
+GOAL_MANAGER      = r"C:\Xova\plugins\goal_manager.py"
+GOAL_STORE        = r"C:\Xova\memory\goal_store.json"
 
 _call_timestamps:    list[float] = []  # wall-time of recent claude --print calls
 _last_inbox_ts:      int = 0
@@ -312,6 +314,30 @@ def _deliver_reply(text: str, from_agent: str, correlation_id: str | None, origi
         _log(f"routed forge->xova: '{text[:60]}'")
 
 
+def _write_goal_progress(note: str) -> None:
+    """Write a progress note to the active goal (non-blocking, best-effort)."""
+    try:
+        if not os.path.isfile(GOAL_STORE):
+            return
+        with open(GOAL_STORE, encoding="utf-8") as fh:
+            store = json.load(fh)
+        gid = store.get("active_goal")
+        if not gid:
+            return
+        subprocess.Popen(
+            [sys.executable, GOAL_MANAGER,
+             "--action", "progress",
+             "--id",    gid,
+             "--note",  note[:400],
+             "--coherence", "0.0",
+             "--agent", "forge"],
+            creationflags=NO_WIN,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
 def _append_violation(source: str, context: str, coherence: float,
                       violations: list, **extra) -> None:
     entry = {"ts": time.time(), "source": source, "context": context,
@@ -410,6 +436,7 @@ def _route_inbox(mode: str) -> None:
     _record_call()
     _log(f"claude replied: '{reply_text[:80]}'")
     _deliver_reply(reply_text, from_agent, correlation_id, ts)
+    _write_goal_progress(f"forge reply to {from_agent}: {reply_text[:120]}")
 
 
 def _route_voice_to_forge(mode: str) -> None:

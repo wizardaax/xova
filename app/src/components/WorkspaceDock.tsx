@@ -57,9 +57,10 @@ import { ConstraintGuard } from "./ConstraintGuard";
 import { GitLog } from "./GitLog";
 import { EvolutionStages } from "./EvolutionStages";
 import { DriveMatrix } from "./DriveMatrix";
+import { GoalState } from "./GoalState";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -119,6 +120,7 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "memgraph",     label: "Mem Graph",    emoji: "🕸" },
   { id: "ctxbroker",   label: "Ctx Broker",   emoji: "🗃" },
   { id: "acttrace",   label: "Act Trace",    emoji: "📋" },
+  { id: "goalstate",  label: "Goals",        emoji: "🎯" },
 ];
 
 interface WorkspaceDockProps {
@@ -241,6 +243,7 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "memgraph"    && <MemoryGraph      onClose={() => onTab(null)} />}
             {activeTab === "ctxbroker"   && <ContextBroker   onClose={() => onTab(null)} />}
             {activeTab === "acttrace"    && <ActionTrace     onClose={() => onTab(null)} />}
+            {activeTab === "goalstate"   && <GoalState       onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
