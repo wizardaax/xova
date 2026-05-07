@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-const ABSORB_PATH = "C:\\Xova\\memory\\absorb_log.jsonl";
+const ABSORB_PATH    = "C:\\Xova\\memory\\absorb_log.jsonl";
+const WORKING_PATH   = "C:\\Xova\\memory\\absorb_working.json";
+const STATE_PATH     = "C:\\Xova\\memory\\absorb_state.json";
 
 interface AbsorbEntry {
   ts: number;
@@ -14,6 +16,14 @@ interface AbsorbEntry {
   two_strike?: boolean;
   recent?: boolean;
 }
+interface AbsorbWorking {
+  source?: string;
+  significance?: number;
+  lines?: string[];
+  ts?: number;
+  cycle?: number;
+}
+interface AbsorbState { [source: string]: { last_sig?: number; last_cycle?: number } }
 
 function fmtTime(ms: number) {
   const d = new Date(ms);
@@ -52,8 +62,10 @@ function Sparkline({ values }: { values: number[] }) {
 }
 
 export function AbsorbLog({ onClose }: { onClose: () => void }) {
-  const [entries, setEntries] = useState<AbsorbEntry[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [entries, setEntries]   = useState<AbsorbEntry[]>([]);
+  const [working, setWorking]   = useState<AbsorbWorking | null>(null);
+  const [absState, setAbsState] = useState<AbsorbState>({});
+  const [loading, setLoading]   = useState(true);
   const [updatedAt, setUpdatedAt] = useState("");
 
   const refresh = useCallback(async () => {
@@ -69,6 +81,14 @@ export function AbsorbLog({ onClose }: { onClose: () => void }) {
       setEntries(parsed);
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     } catch { setEntries([]); }
+    try {
+      const raw = await invoke<string>("xova_read_file", { path: WORKING_PATH });
+      setWorking(JSON.parse(raw) as AbsorbWorking);
+    } catch { setWorking(null); }
+    try {
+      const raw = await invoke<string>("xova_read_file", { path: STATE_PATH });
+      setAbsState(JSON.parse(raw) as AbsorbState);
+    } catch { setAbsState({}); }
     setLoading(false);
   }, []);
 
@@ -114,6 +134,35 @@ export function AbsorbLog({ onClose }: { onClose: () => void }) {
           <Sparkline values={sparkVals} />
         </div>
       </div>
+
+      {/* Absorb state per source */}
+      {Object.keys(absState).length > 0 && (
+        <div className="flex gap-2 px-3 py-1.5 border-b border-zinc-800 shrink-0">
+          {Object.entries(absState).map(([src, st]) => (
+            <div key={src} className="flex flex-col text-center">
+              <span className={`text-[8px] px-1.5 py-0.5 rounded border ${sourcePill(src)}`}>{src}</span>
+              <span className="text-zinc-600 text-[7px]">sig:{st.last_sig ?? "?"} cy:{st.last_cycle ?? "?"}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Current working item */}
+      {working && (
+        <div className="px-3 py-1.5 border-b border-zinc-800 shrink-0">
+          <div className="flex items-center gap-2 mb-0.5">
+            <span className="text-[7px] uppercase tracking-wider text-zinc-600">in-flight</span>
+            <span className={`text-[8px] px-1 rounded border ${sourcePill(working.source ?? "")}`}>{working.source}</span>
+            {working.significance !== undefined && (
+              <span className={`text-[8px] px-1 rounded border font-bold ${sigBadge(working.significance)}`}>{working.significance}</span>
+            )}
+            <span className="text-zinc-700 text-[8px] ml-auto">cy:{working.cycle} +{working.lines?.length ?? 0} lines</span>
+          </div>
+          {working.lines && working.lines.length > 0 && (
+            <div className="text-[8px] text-zinc-500 truncate">{working.lines[0]?.slice(0, 120)}</div>
+          )}
+        </div>
+      )}
 
       {loading && entries.length === 0 && (
         <div className="flex-1 flex items-center justify-center text-zinc-600">loading…</div>
