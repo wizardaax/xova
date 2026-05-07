@@ -164,10 +164,12 @@ CIPHER_AGENT        = r"C:\Xova\plugins\cipher_agent.py"
 CORPUS_SIGNER       = r"C:\Xova\plugins\corpus_signer.py"
 CI_HEALTH           = r"C:\Xova\plugins\ci_health.py"
 LUCAS_PHASE         = r"C:\Xova\plugins\lucas_phase.py"
+FIELD_WEAVE         = r"C:\Xova\plugins\field_weave.py"
 SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
 CI_EVERY_N          = 30   # CI health scan every 30 cycles (~30 min)
 LUCAS_EVERY_N       = 25   # Lucas phase analysis every 25 cycles (~25 min)
+WEAVE_EVERY_N       = 35   # field weave phi-spiral every 35 cycles (~35 min)
 DREAM_EVERY_H       = 6    # dream consolidation every N hours
 CIPHER_EVERY_N      = 50   # cipher agent status every 50 cycles (~50 min)
 FEDERATION_EVERY_N  = 60   # cross-AI fact federation sync every 60 cycles (~1 hr)
@@ -293,6 +295,18 @@ def _run_lucas_phase() -> None:
         )
     except Exception as exc:
         _log(f"lucas phase error: {exc}")
+
+
+def _run_field_weave() -> None:
+    """Run field_weave.py in background — phi-spiral coherence analysis, publishes to broker."""
+    try:
+        subprocess.Popen(
+            [sys.executable, FIELD_WEAVE, "--action", "run"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"field weave error: {exc}")
 
 
 def _run_dream_consolidation() -> None:
@@ -1134,6 +1148,7 @@ def main() -> None:
                 _coh_reward = max(0.0, min(1.0, result.average_coherence - 0.1 * getattr(result, "gated_count", 0)))
                 _eval_score_for_ucb: float = 0.0
                 _last_lucas_score:   float | None = None  # Sprint 7: Lucas phase → UCB
+                _last_weave_score:   float | None = None  # Sprint 8: field weave → UCB
 
                 # SCE-88: publish cycle coherence to context_broker for advisory gate
                 _write_context_slot("xova.sce88_status", {
@@ -1236,6 +1251,22 @@ def main() -> None:
                             )
                     except Exception:
                         pass
+                    # Field weave: phi-spiral coherence + golden angle cross-validation
+                    _last_weave_score: float | None = None
+                    try:
+                        with open(CONTEXT_BROKER, encoding="utf-8") as _wf:
+                            _ws = json.load(_wf)
+                        _fw = _ws.get("slots", {}).get("xova.field_weave", {})
+                        _fw_score = _fw.get("score")
+                        _fw_deg   = _fw.get("golden_deg")
+                        if _fw_score is not None:
+                            _last_weave_score = _fw_score
+                            _goal_kw.append(
+                                f"field weave spiral coherent · golden angle {_fw_deg:.4f} deg"
+                                f" · phi spiral score {_fw_score:.3f} · self-model observation complete"
+                            )
+                    except Exception:
+                        pass
                     _kw_str = " · ".join(_goal_kw)
                     cycle_summary = (
                         f"cycle {cycle_num} — {_kw_str + ' · ' if _kw_str else ''}"
@@ -1262,6 +1293,10 @@ def main() -> None:
                     reward = (0.45 * _coh_reward
                               + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
                               + 0.25 * _last_lucas_score)
+                elif goal_idx == 6 and _last_weave_score is not None:
+                    reward = (0.45 * _coh_reward
+                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
+                              + 0.25 * _last_weave_score)
                 elif _eval_score_for_ucb > 0.0:
                     reward = 0.6 * _coh_reward + 0.4 * _eval_score_for_ucb
                 else:
@@ -1311,6 +1346,10 @@ def main() -> None:
         # Lucas phase: phi convergence analysis every LUCAS_EVERY_N cycles (~25 min)
         if cycle_num % LUCAS_EVERY_N == 0:
             _run_lucas_phase()
+
+        # Field weave: phi-spiral coherence every WEAVE_EVERY_N cycles (~35 min)
+        if cycle_num % WEAVE_EVERY_N == 0:
+            _run_field_weave()
 
         # Dream consolidation: distil 24h of data every DREAM_EVERY_H hours
         _run_dream_consolidation()
