@@ -165,6 +165,7 @@ SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
 DREAM_EVERY_H       = 6    # dream consolidation every N hours
 CIPHER_EVERY_N      = 50   # cipher agent status every 50 cycles (~50 min)
+FEDERATION_EVERY_N  = 60   # cross-AI fact federation sync every 60 cycles (~1 hr)
 STUCK_EVERY_N       = 10   # stuck-goal executor every 10 cycles (~10 min)
 _last_dream_ts: float = 0.0
 
@@ -289,6 +290,22 @@ def _run_persona_synthesize() -> None:
         )
     except Exception as exc:
         _log(f"persona synthesize error: {exc}")
+
+
+def _run_fact_federation() -> None:
+    """Round 107: sync Jarvis memory_nodes + Xova standing_facts → shared_facts.json."""
+    fact_fed = r"C:\Xova\plugins\fact_federation.py"
+    if not os.path.exists(fact_fed):
+        return
+    try:
+        subprocess.Popen(
+            [sys.executable, fact_fed, "sync"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        _log("fact_federation: sync triggered")
+    except Exception as exc:
+        _log(f"fact_federation error: {exc}")
 
 
 def _run_self_eval(output: str, goal: str, goal_id: str, agent: str = "mesh") -> float:
@@ -1098,6 +1115,10 @@ def main() -> None:
         # Stuck-goal executor: attempt progress on stalled auto-goals
         if cycle_num % STUCK_EVERY_N == 0:
             _run_stuck_goal_executor()
+
+        # Round 107: cross-AI fact federation — sync Jarvis + Xova facts every hour
+        if cycle_num % FEDERATION_EVERY_N == 0:
+            _run_fact_federation()
 
         time.sleep(CYCLE_INTERVAL)
 
