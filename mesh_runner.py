@@ -333,6 +333,12 @@ _EVAL_STOPWORDS = {
     "not","no","it","its","this","that","these","those","i","we","you",
     "he","she","they","their","our","my","your","his","her","from","by",
     "as","if","then","so","all","each","any","more","also","just","can",
+    # common action verbs and adjectives that carry no domain signal
+    "build","make","work","take","look","give","know","keep","come","back",
+    "need","want","help","only","well","much","good","like","some","time",
+    "when","what","than","even","both","most","into","over","used","same",
+    "such","last","next","here","down","long","very","true","none","run",
+    "active","status","current","using","about","after","before","during",
 }
 
 
