@@ -161,24 +161,30 @@ def _create_task(text: str, trigger: str, priority: int,
     if not approved:
         return {"skipped": "vetoed_by_xova", "reason": reason}
 
-    try:
-        cmd = [sys.executable, GOAL_MANAGER,
-               "--action",   "set",
-               "--text",     text,
-               "--priority", str(priority),
-               "--owner",    "task_initiator"]
-        if parent_id:
-            cmd += ["--parent", parent_id]
-        r = subprocess.run(cmd, capture_output=True, text=True, timeout=8,
-                           creationflags=NO_WIN, encoding="utf-8")
-        result = json.loads(r.stdout.strip()) if r.stdout.strip() else {}
-        if result.get("ok"):
-            now = time.time()
-            state["last_trigger_ts"][trigger] = now
-            state["tasks_today"].append(now)
-            return result
-    except Exception:
-        pass
+    cmd = [sys.executable, GOAL_MANAGER,
+           "--action",   "set",
+           "--text",     text,
+           "--priority", str(priority),
+           "--owner",    "task_initiator"]
+    if parent_id:
+        cmd += ["--parent", parent_id]
+    last_exc: str = ""
+    for attempt in range(2):
+        try:
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=8,
+                               creationflags=NO_WIN, encoding="utf-8")
+            result = json.loads(r.stdout.strip()) if r.stdout.strip() else {}
+            if result.get("ok"):
+                now = time.time()
+                state["last_trigger_ts"][trigger] = now
+                state["tasks_today"].append(now)
+                return result
+            last_exc = f"goal_manager returned not-ok: {result}"
+        except Exception as exc:
+            last_exc = str(exc)
+        if attempt == 0:
+            time.sleep(2)
+    _log(f"_create_task failed after 2 attempts ({trigger}): {last_exc}")
     return None
 
 
