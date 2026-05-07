@@ -779,6 +779,30 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                 {goal.parent && <span className="text-zinc-600 text-[8px]">↳ {goal.parent.slice(0, 12)}</span>}
                 <span className="text-zinc-600 text-[8px] ml-auto">{goal.progress.length} notes</span>
               </div>
+              {/* Per-goal coherence sparkline */}
+              {(() => {
+                const pts = goal.progress.filter(p => p.coherence > 0);
+                if (pts.length < 3) return null;
+                const W = 120; const H = 10; const pad = 1;
+                const cohVals = pts.slice(-40).map(p => p.coherence);
+                const minC = Math.min(...cohVals);
+                const maxC = Math.max(...cohVals);
+                const rng = maxC - minC || 0.01;
+                const polyPts = cohVals.map((c, i) => {
+                  const x = pad + (i / (cohVals.length - 1)) * (W - pad * 2);
+                  const y = pad + (1 - (c - minC) / rng) * (H - pad * 2);
+                  return `${x.toFixed(1)},${y.toFixed(1)}`;
+                }).join(" ");
+                const lastC = cohVals[cohVals.length - 1];
+                return (
+                  <div className="flex items-center gap-1.5">
+                    <svg width={W} height={H} className="shrink-0">
+                      <polyline points={polyPts} fill="none" stroke={cohColor(lastC)} strokeWidth="0.8" opacity="0.6" />
+                    </svg>
+                    <span className="text-[7px] font-mono shrink-0" style={{ color: cohColor(lastC) }}>{lastC.toFixed(3)}</span>
+                  </div>
+                );
+              })()}
               {/* Action buttons */}
               <div className="flex gap-1">
                 {goal.status !== "active" && (
