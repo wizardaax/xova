@@ -6,6 +6,7 @@ const OUTBOX_PATH = "C:\\Xova\\memory\\forge_outbox.json";
 const QUEUE_PATH  = "C:\\Xova\\memory\\forge_queue.json";
 const HOOK_INBOX  = "C:\\Xova\\memory\\forge_hook_inbox.jsonl";
 const HOOK_CURSOR = "C:\\Xova\\memory\\forge_hook_cursor.json";
+const EVENTS_PATH = "C:\\Xova\\memory\\forge_events.jsonl";
 
 interface ForgeMsg {
   intent: "ask" | "reply";
@@ -16,6 +17,15 @@ interface HookMsg {
   ts: number;
   from?: string; content?: string; priority?: string;
   kind?: string; text?: string;
+}
+interface ForgeEvent {
+  ts: number;
+  kind: string;
+  sce88_levels?: number[];
+  note?: string;
+  user_query?: string;
+  risk?: number;
+  answered?: boolean;
 }
 
 function fmtTs(ms: number) {
@@ -44,8 +54,9 @@ export function ForgeInbox({ onClose }: { onClose: () => void }) {
   const [queueLen, setQueueLen] = useState(0);
   const [hookMsgs, setHookMsgs] = useState<HookMsg[]>([]);
   const [hookCursor, setHookCursor] = useState<number>(0);
+  const [events, setEvents]   = useState<ForgeEvent[]>([]);
   const [updatedAt, setUpdatedAt] = useState("");
-  const [tab, setTab]       = useState<"forge" | "hook">("hook");
+  const [tab, setTab]       = useState<"forge" | "hook" | "events">("hook");
   const [showOutbox, setShowOutbox] = useState(false);
 
   const refresh = useCallback(async () => {
@@ -85,6 +96,15 @@ export function ForgeInbox({ onClose }: { onClose: () => void }) {
       setHookCursor(c.pos ?? 0);
     } catch { /* ok */ }
 
+    // Load forge events (SCE-88 self-eval log)
+    try {
+      const rawEv = await invoke<string>("xova_read_file", { path: EVENTS_PATH });
+      const evs: ForgeEvent[] = rawEv.trim().split("\n").filter(Boolean).map(l => {
+        try { return JSON.parse(l) as ForgeEvent; } catch { return null; }
+      }).filter(Boolean) as ForgeEvent[];
+      setEvents(evs.slice().reverse().slice(0, 50));
+    } catch { setEvents([]); }
+
     setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
   }, []);
 
@@ -106,12 +126,12 @@ export function ForgeInbox({ onClose }: { onClose: () => void }) {
           </span>
         )}
         <div className="flex gap-1 ml-auto">
-          {(["hook", "forge"] as const).map(t => (
+          {(["hook", "events", "forge"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-1.5 py-0.5 rounded border text-[8px] transition-colors ${
                 tab === t ? "border-purple-600 text-purple-300 bg-purple-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"
               }`}>
-              {t === "hook" ? `hook (${hookMsgs.length})` : "forge"}
+              {t === "hook" ? `hook (${hookMsgs.length})` : t === "events" ? `events (${events.length})` : "forge"}
             </button>
           ))}
         </div>
@@ -142,6 +162,49 @@ export function ForgeInbox({ onClose }: { onClose: () => void }) {
                   {pri && <span className="text-zinc-700">{pri}</span>}
                 </div>
                 <div className="text-[9px] text-zinc-300 leading-snug break-words">{body}</div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Forge events — forge_events.jsonl (SCE-88 self-eval log) */}
+      {tab === "events" && (
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          <div className="flex items-center gap-2 px-1 py-0.5 text-[7px] text-zinc-600">
+            <span>forge_events.jsonl · SCE-88 self-eval pipeline</span>
+          </div>
+          {events.length === 0 && (
+            <div className="text-zinc-600 text-[10px] text-center py-4">no events</div>
+          )}
+          {events.map((e, i) => {
+            const kindColor = e.kind === "self-eval-flagged" ? "#f87171"
+              : e.kind === "auto-correction" ? "#34d399"
+              : "#71717a";
+            const riskColor = (e.risk ?? 0) >= 4 ? "#f87171" : (e.risk ?? 0) >= 2 ? "#fbbf24" : "#52525b";
+            return (
+              <div key={i} className="border-b border-zinc-900 py-1.5 space-y-0.5">
+                <div className="flex items-center gap-1.5 text-[7px]">
+                  <span className="text-zinc-700">{fmtTs(e.ts)}</span>
+                  <span className="font-mono" style={{ color: kindColor }}>{e.kind}</span>
+                  {e.risk !== undefined && (
+                    <span className="font-bold" style={{ color: riskColor }}>r{e.risk}</span>
+                  )}
+                  {e.sce88_levels && e.sce88_levels.length > 0 && (
+                    <span className="text-zinc-700">L{e.sce88_levels.join(",")}</span>
+                  )}
+                  {e.answered !== undefined && (
+                    <span className={e.answered ? "text-emerald-700" : "text-red-800"}>
+                      {e.answered ? "ans" : "blocked"}
+                    </span>
+                  )}
+                </div>
+                {e.user_query && (
+                  <div className="text-[8px] text-zinc-500 truncate">q: {e.user_query}</div>
+                )}
+                {e.note && (
+                  <div className="text-[9px] text-zinc-300 leading-snug break-words">{e.note}</div>
+                )}
               </div>
             );
           })}
