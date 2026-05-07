@@ -162,6 +162,17 @@ def action_activate(gid: str) -> dict:
     return {"ok": True, "id": gid}
 
 
+def action_priority(gid: str, value: int) -> dict:
+    store = _load()
+    goal = store["goals"].get(gid)
+    if not goal:
+        return {"ok": False, "error": f"goal not found: {gid}"}
+    goal["priority"] = max(0, value)
+    goal["updated_at"] = time.time()
+    _save(store)
+    return {"ok": True, "id": gid, "priority": goal["priority"]}
+
+
 def action_snapshot() -> dict:
     store = _load()
     return {"ok": True, "active_goal": store.get("active_goal"),
@@ -171,7 +182,7 @@ def action_snapshot() -> dict:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--action", default="snapshot",
-                    choices=["set", "get", "list", "progress", "complete", "pause", "fail", "activate", "snapshot"])
+                    choices=["set", "get", "list", "progress", "complete", "pause", "fail", "activate", "priority", "snapshot"])
     ap.add_argument("--id",        default="")
     ap.add_argument("--text",      default="")
     ap.add_argument("--note",      default="")
@@ -199,6 +210,8 @@ def main() -> None:
         result = action_fail(args.id, args.note)
     elif args.action == "activate":
         result = action_activate(args.id)
+    elif args.action == "priority":
+        result = action_priority(args.id, args.priority)
     else:
         result = action_snapshot()
 

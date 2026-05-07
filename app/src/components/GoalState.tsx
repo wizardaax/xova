@@ -83,7 +83,8 @@ interface UcbReward {
   blended:       number;
   ts:            number;
 }
-interface SelfEvalEntry { ts: number; agent: string; score: number; hit?: string[]; missed?: string[]; }
+interface SelfEvalEntry { ts: number; agent: string; score: number; hit?: string[]; missed?: string[]; strategy?: string; }
+interface AgentStrategy { strategy: string; score: number; ts: number; goal_id?: string; }
 interface SelfModProposal {
   id:              string;
   file_path:       string;
@@ -132,6 +133,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [domainTs,     setDomainTs]     = useState<(number | null)[]>([]);
   const [ltmData,      setLtmData]      = useState<LtmData | null>(null);
   const [evalHistory,  setEvalHistory]  = useState<SelfEvalEntry[]>([]);
+  const [strategies,   setStrategies]   = useState<Record<string, AgentStrategy>>({});
   const [selfMods,     setSelfMods]     = useState<SelfModProposal[]>([]);
   const [repoSlot,     setRepoSlot]     = useState<RepoSyncSlot | null>(null);
   const [repoRunning,  setRepoRunning]  = useState(false);
@@ -207,8 +209,9 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     // Load self-eval history for trend chart
     try {
       const seRaw = await invoke<string>("xova_read_file", { path: SELF_EVAL_STORE });
-      const seData = JSON.parse(seRaw) as { history?: SelfEvalEntry[] };
+      const seData = JSON.parse(seRaw) as { history?: SelfEvalEntry[]; strategies?: Record<string, AgentStrategy> };
       setEvalHistory(seData.history ?? []);
+      setStrategies(seData.strategies ?? {});
     } catch { /* ok */ }
     // Load self-modifier proposals for mods view
     try {
@@ -642,6 +645,54 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                   </div>
                 );
           })()}
+          {/* Agent strategy cards */}
+          {Object.keys(strategies).length > 0 && (
+            <div className="bg-zinc-900 rounded p-2 space-y-1.5">
+              <div className="text-[8px] text-zinc-500 uppercase tracking-wider mb-0.5">agent strategies</div>
+              {Object.entries(strategies).map(([agent, s]) => {
+                const isLow = s.score < 0.6;
+                const isMid = s.score < 0.8;
+                const borderCol = isLow ? "#7c3aed" : isMid ? "#b45309" : "#065f46";
+                const textCol = cohColor(s.score);
+                return (
+                  <div key={agent} className="rounded border px-2 py-1.5 space-y-0.5"
+                    style={{ borderColor: borderCol + "66", backgroundColor: borderCol + "11" }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-zinc-400 text-[8px] font-mono">{agent}</span>
+                      <span className="font-mono text-[8px]" style={{ color: textCol }}>{s.score.toFixed(3)}</span>
+                      <span className="text-zinc-700 text-[7px] ml-auto">{fmtDate(s.ts)} {fmtTs(s.ts)}</span>
+                    </div>
+                    <div className="text-[9px] text-zinc-300 leading-snug">{s.strategy}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* Missed keywords aggregate from raw eval history */}
+          {evalHistory.some(e => (e.missed?.length ?? 0) > 0) && (() => {
+            const counts: Record<string, number> = {};
+            evalHistory.forEach(e => e.missed?.forEach(kw => { counts[kw] = (counts[kw] ?? 0) + 1; }));
+            const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 12);
+            const maxC = sorted[0]?.[1] ?? 1;
+            return (
+              <div className="bg-zinc-900 rounded p-2 space-y-1">
+                <div className="flex items-center justify-between mb-0.5">
+                  <span className="text-[8px] text-zinc-500 uppercase tracking-wider">persistent gaps (eval history)</span>
+                  <span className="text-[7px] text-zinc-700">{evalHistory.length} evals</span>
+                </div>
+                {sorted.map(([kw, n]) => (
+                  <div key={kw} className="flex items-center gap-1.5">
+                    <span className="text-amber-400 text-[8px] font-mono w-[100px] shrink-0 truncate">{kw}</span>
+                    <div className="flex-1 h-1 bg-zinc-800 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full bg-amber-600/60" style={{ width: `${(n / maxC) * 100}%` }} />
+                    </div>
+                    <span className="text-zinc-600 text-[7px] w-[20px] text-right shrink-0">{n}×</span>
+                  </div>
+                ))}
+                <div className="text-zinc-700 text-[7px] mt-0.5">keywords the agents consistently miss — each bar = missed count across all evals</div>
+              </div>
+            );
+          })()}
           {/* Swarm dispatch summary */}
           {swarmDispatch && (
             <div className="bg-zinc-900 rounded p-2 space-y-1.5">
@@ -836,7 +887,13 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                   {goal.status}
                 </span>
                 <span className="text-zinc-200 text-[10px] leading-snug flex-1">{goal.text}</span>
-                <span className="text-zinc-600 text-[8px] shrink-0">p{goal.priority}</span>
+                <div className="flex items-center gap-0.5 shrink-0">
+                  <button onClick={() => xovaRun(`${GOAL_MGR} --action priority --id ${goal.id} --priority ${goal.priority + 1}`).then(() => refresh())}
+                    className="text-zinc-600 hover:text-emerald-400 text-[10px] leading-none px-0.5">▲</button>
+                  <span className="text-zinc-500 text-[8px] font-mono w-[18px] text-center">{goal.priority}</span>
+                  <button onClick={() => xovaRun(`${GOAL_MGR} --action priority --id ${goal.id} --priority ${Math.max(0, goal.priority - 1)}`).then(() => refresh())}
+                    className="text-zinc-600 hover:text-amber-400 text-[10px] leading-none px-0.5">▼</button>
+                </div>
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-zinc-600 text-[8px]">{goal.id}</span>
