@@ -544,8 +544,12 @@ def _humanize(result: dict) -> str:
             return f"AEON field · engine unavailable ({result.get('reason', 'unknown')})"
         series = result.get("thrust_series", [{}])
         thrust = series[0].get("thrust", 0) if series else 0
-        # Thrust is ~nN range — use scientific notation to avoid misleading "0.0000 N"
-        return f"AEON field · thrust {thrust:.3e} N"
+        val = result.get("validation", {})
+        matched = val.get("matched", False)
+        rel_err = val.get("max_rel_err", None)
+        val_str = (f" · validated ✓ err={rel_err:.2%}" if (matched and rel_err is not None)
+                   else " · validation FAIL" if val else "")
+        return f"AEON field · thrust {thrust:.3e} N{val_str}"
     if "point_count" in result or "points" in result:
         n = result.get("point_count", len(result.get("points", [])))
         return f"field weave · {n} phyllotaxis points"
@@ -982,6 +986,20 @@ def main() -> None:
                         "coherence": round(coherence, 3),
                         "gated":    gated,
                     })
+
+                    # AEON Sprint 1: publish AEON thrust + validation to context_broker
+                    if r.get("action") == "aeon" and r.get("ran"):
+                        series = r.get("thrust_series", [])
+                        val    = r.get("validation", {})
+                        _write_context_slot("xova.aeon_last_run", {
+                            "cycle":          cycle_num,
+                            "thrust_n":       series[0].get("thrust") if series else None,
+                            "thrust_series":  series,
+                            "validated":      val.get("matched", False),
+                            "max_rel_err":    val.get("max_rel_err"),
+                            "constants":      r.get("constants", {}),
+                            "ts":             time.time(),
+                        })
 
                 forge_alive, forge_weight = _read_forge_status()
                 node_count  = len(result.results) + (1 if forge_alive else 0)
