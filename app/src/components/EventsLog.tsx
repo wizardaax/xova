@@ -83,13 +83,29 @@ export function EventsLog({ onClose }: { onClose: () => void }) {
         <button onClick={refresh} disabled={loading} className="ml-auto text-zinc-600 hover:text-zinc-300 disabled:opacity-40">↻</button>
         <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">✕</button>
       </div>
-      <div className="px-3 py-1 border-b border-zinc-800 shrink-0">
+      <div className="px-3 py-1 border-b border-zinc-800 shrink-0 space-y-1">
         <input
           value={kindFilter}
           onChange={e => setKindFilter(e.target.value)}
           placeholder="filter by kind or data…"
           className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-[9px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-zinc-500"
         />
+        <div className="flex gap-1 flex-wrap">
+          {[
+            { label: "⚠ errors", q: "error" },
+            { label: "evo", q: "evo_" },
+            { label: "cycle", q: "cycle_end" },
+            { label: "flagged", q: "flagged" },
+            { label: "clear", q: "" },
+          ].map(({ label, q }) => (
+            <button key={label} onClick={() => setKindFilter(q)}
+              className={`px-1.5 py-px rounded border text-[7px] transition-colors ${
+                kindFilter === q && q !== "" ? "border-emerald-600 text-emerald-300" : "border-zinc-700 text-zinc-600 hover:text-zinc-300"
+              }`}>
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading && entries.length === 0 && <div className="flex-1 flex items-center justify-center text-zinc-600">loading events…</div>}
