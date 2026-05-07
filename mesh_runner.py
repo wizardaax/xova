@@ -155,8 +155,14 @@ SELF_EVAL_STORE   = r"C:\Xova\memory\self_eval_store.json"
 GOAL_DECOMPOSER   = r"C:\Xova\plugins\goal_decomposer.py"
 DISPATCH_STORE    = r"C:\Xova\memory\swarm_dispatch.json"
 SWARM_INTERVAL    = 3600  # seconds between swarm decompositions for same goal
-TASK_INITIATOR    = r"C:\Xova\plugins\task_initiator.py"
-SCAN_EVERY_N      = 3     # run task_initiator scan every N cognitive cycles
+TASK_INITIATOR      = r"C:\Xova\plugins\task_initiator.py"
+DREAM_CONSOLIDATOR  = r"C:\Xova\plugins\dream_consolidator.py"
+CURIOSITY_ENGINE    = r"C:\Xova\plugins\curiosity_engine.py"
+PERSONA_GOVERNOR    = r"C:\Xova\plugins\persona_governor.py"
+SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
+CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
+DREAM_EVERY_H       = 6    # dream consolidation every N hours
+_last_dream_ts: float = 0.0
 
 
 def _load_active_goal() -> tuple[str | None, str | None]:
@@ -227,6 +233,47 @@ def _run_task_scan() -> None:
         )
     except Exception as exc:
         _log(f"task scan error: {exc}")
+
+
+def _run_curiosity_scan() -> None:
+    """Fire curiosity_engine scan in background — detects knowledge gaps, raises proactive goals."""
+    try:
+        subprocess.Popen(
+            [sys.executable, CURIOSITY_ENGINE, "--action", "scan"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"curiosity scan error: {exc}")
+
+
+def _run_dream_consolidation() -> None:
+    """Fire dream_consolidator in background — distils last 24h into long_term_memory.json."""
+    global _last_dream_ts
+    if (time.time() - _last_dream_ts) < DREAM_EVERY_H * 3600:
+        return
+    _last_dream_ts = time.time()
+    try:
+        subprocess.Popen(
+            [sys.executable, DREAM_CONSOLIDATOR, "--action", "consolidate"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        _log("dream consolidation dispatched")
+    except Exception as exc:
+        _log(f"dream consolidation error: {exc}")
+
+
+def _run_persona_synthesize() -> None:
+    """Fire persona_governor synthesize in background — periodic fleet voice update."""
+    try:
+        subprocess.Popen(
+            [sys.executable, PERSONA_GOVERNOR, "--action", "synthesize"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"persona synthesize error: {exc}")
 
 
 def _run_self_eval(output: str, goal: str, goal_id: str, agent: str = "mesh") -> float:
@@ -779,6 +826,17 @@ def main() -> None:
         # Task initiator: scan for triggers every SCAN_EVERY_N cycles
         if cycle_num % SCAN_EVERY_N == 0:
             _run_task_scan()
+
+        # Curiosity engine: proactive gap detection every CURIOSITY_EVERY_N cycles
+        if cycle_num % CURIOSITY_EVERY_N == 0:
+            _run_curiosity_scan()
+
+        # Dream consolidation: distil 24h of data every DREAM_EVERY_H hours
+        _run_dream_consolidation()
+
+        # Persona synthesis: update governor voice every 30 cycles (~30 min)
+        if cycle_num % 30 == 0:
+            _run_persona_synthesize()
 
         time.sleep(CYCLE_INTERVAL)
 

@@ -3300,6 +3300,25 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       }
       return;
     }
+    // /persona — run persona governor synthesis (Xova unified voice)
+    if (slash === "/persona" || slash === "/governor" || slash === "/xova-voice") {
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python "C:\\Xova\\plugins\\persona_governor.py" --action synthesize`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const parsed = JSON.parse(wrap.stdout.trim()) as { ok: boolean; synthesis?: string; error?: string };
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: parsed.ok ? (parsed.synthesis || "no synthesis") : `governor error: ${parsed.error || wrap.stderr}`,
+        }]);
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: `persona governor failed: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
     // /sovereign — audit which features are local-only vs need internet
     if (slash === "/sovereign" || slash === "/sovrigne" || slash === "/local") {
       // Probe key local services
@@ -4653,6 +4672,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           { id: "p-dashboard", group: "Cognition", label: "📊 Dashboard (one-shot status across every subsystem)", hint: "/dashboard", run: () => onSend("/dashboard") },
           { id: "p-cycles",    group: "Cognition", label: "🔁 Recent cognitive cycles (last 10)",            hint: "/cycles",    run: () => onSend("/cycles") },
           { id: "p-vault",     group: "Cognition", label: "📸 Vault snapshot history",                       hint: "/vault",     run: () => onSend("/vault") },
+          { id: "p-persona",      group: "Cognition", label: "🎭 Persona governor — Xova speaks as unified fleet voice",  hint: "/persona",      run: () => onSend("/persona") },
           { id: "p-phone-bridge", group: "Cognition", label: "📱 Start Forge phone bridge (port 7340 — chat from phone)", hint: "/phone-bridge", run: () => onSend("/phone-bridge") },
           { id: "p-lan-on",    group: "Cognition", label: "🌐 Start LAN gateway (phone-as-thin-client)",            hint: "/lan-on",    run: () => onSend("/lan-on") },
           { id: "p-lan-off",   group: "Cognition", label: "🚫 Stop LAN gateway",                                    hint: "/lan-off",   run: () => onSend("/lan-off") },

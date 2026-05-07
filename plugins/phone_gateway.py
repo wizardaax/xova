@@ -5,20 +5,23 @@ Run this on the PC. Open http://<PC-LAN-IP>:7340 in your phone browser.
 No cloud. No auth. LAN only. Stdlib only.
 
 Endpoints:
-  GET  /         serve the PWA (single-page mobile UI)
-  POST /msg      send a message to Forge (writes forge_inbox.json)
-  GET  /replies  read forge_outbox.json entries since ?since=<ms>
-  GET  /status   LAN IP, port, active goal, forge mode
+  GET  /          serve the PWA (mobile UI with Xova/Forge mode toggle)
+  POST /msg       Forge mode: write to forge_inbox.json -> claude --print
+  POST /governor  Xova mode: direct persona governor chat (Ollama, ~3s)
+  GET  /replies   forge_outbox.json entries since ?since=<ms>
+  GET  /status    LAN IP, port, active goal, forge mode
 """
-import http.server, json, os, socket, sys, time
+import http.server, json, os, socket, subprocess, sys, time
 
-PORT         = 7340
-FORGE_INBOX  = r"C:\Xova\memory\forge_inbox.json"
-FORGE_OUTBOX = r"C:\Xova\memory\forge_outbox.json"
-GOAL_STORE   = r"C:\Xova\memory\goal_store.json"
-AGENT_BOARD  = r"C:\Xova\memory\agent_board.json"
-MESH_FLAGS   = r"C:\Xova\memory\mesh_flags.json"
-STATE_PATH   = r"C:\Xova\memory\phone_gateway_state.json"
+PORT             = 7340
+FORGE_INBOX      = r"C:\Xova\memory\forge_inbox.json"
+FORGE_OUTBOX     = r"C:\Xova\memory\forge_outbox.json"
+GOAL_STORE       = r"C:\Xova\memory\goal_store.json"
+AGENT_BOARD      = r"C:\Xova\memory\agent_board.json"
+MESH_FLAGS       = r"C:\Xova\memory\mesh_flags.json"
+STATE_PATH       = r"C:\Xova\memory\phone_gateway_state.json"
+PERSONA_GOVERNOR = r"C:\Xova\plugins\persona_governor.py"
+NO_WIN           = 0x08000000
 
 _CORS = {
     "Access-Control-Allow-Origin": "*",
@@ -40,47 +43,94 @@ body{background:#09090b;color:#e4e4e7;font-family:-apple-system,BlinkMacSystemFo
 #hdr{padding:max(12px,env(safe-area-inset-top)) 14px 10px;background:#18181b;border-bottom:1px solid #27272a;display:flex;align-items:center;gap:8px;flex-shrink:0}
 #logo{font-weight:700;font-size:15px;color:#a78bfa}
 #goal{font-size:10px;color:#71717a;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#mode{background:none;border:1px solid #6366f1;color:#a78bfa;border-radius:10px;padding:3px 9px;font-size:10px;cursor:pointer;flex-shrink:0;font-family:inherit}
 #dot{width:7px;height:7px;border-radius:50%;background:#f87171;flex-shrink:0;transition:background .3s}
 #dot.on{background:#22c55e}
 #feed{flex:1;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:6px;-webkit-overflow-scrolling:touch}
 .b{padding:9px 13px;border-radius:16px;max-width:85%;line-height:1.5;white-space:pre-wrap;word-break:break-word;font-size:13px}
 .b.adam{background:#4f46e5;align-self:flex-end;border-bottom-right-radius:4px}
 .b.forge{background:#1c1c1e;align-self:flex-start;border-bottom-left-radius:4px;border-left:2px solid #6366f1}
+.b.xova{background:#1c1c1e;align-self:flex-start;border-bottom-left-radius:4px;border-left:2px solid #a78bfa}
 .b.sys{background:transparent;align-self:center;color:#52525b;font-size:10px;text-align:center}
+.b.thinking{opacity:.5;font-style:italic}
 #bar{padding:8px 12px;padding-bottom:max(8px,env(safe-area-inset-bottom));background:#18181b;border-top:1px solid #27272a;display:flex;gap:8px;align-items:flex-end;flex-shrink:0}
 #inp{flex:1;background:#27272a;border:1px solid #3f3f46;color:#e4e4e7;padding:10px 14px;border-radius:22px;font-size:14px;font-family:inherit;outline:none;resize:none;max-height:120px;min-height:40px;line-height:1.4}
 #inp:focus{border-color:#6366f1}
 #btn{background:#4f46e5;color:#fff;border:none;border-radius:50%;width:40px;height:40px;font-size:18px;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center}
 #btn:active{background:#6366f1}
+#btn.xova-mode{background:#7c3aed}
 </style>
 </head>
 <body>
-<div id="hdr"><div id="logo">Xova</div><div id="goal">connecting...</div><div id="dot"></div></div>
-<div id="feed"><div class="b sys">Xova Remote &bull; LAN only</div></div>
+<div id="hdr">
+  <div id="logo">Xova</div>
+  <div id="goal">connecting...</div>
+  <button id="mode">Xova</button>
+  <div id="dot"></div>
+</div>
+<div id="feed"><div class="b sys">Xova Remote &bull; LAN only &bull; tap mode to switch</div></div>
 <div id="bar">
-<textarea id="inp" rows="1" placeholder="Message Xova..." autocomplete="off"></textarea>
-<button id="btn">&#8593;</button>
+<textarea id="inp" rows="1" placeholder="Talk to Xova..." autocomplete="off"></textarea>
+<button id="btn" class="xova-mode">&#8593;</button>
 </div>
 <script>
 let lastTs = Date.now();
+let mode = 'xova'; // 'xova' (governor/Ollama) or 'forge' (claude --print)
+let thinking = null;
+
+const modeBtn = document.getElementById('mode');
+const sendBtn = document.getElementById('btn');
+modeBtn.onclick = function(){
+  mode = mode==='xova' ? 'forge' : 'xova';
+  modeBtn.textContent = mode==='xova' ? 'Xova' : 'Forge';
+  modeBtn.style.borderColor = mode==='xova' ? '#6366f1' : '#3b82f6';
+  modeBtn.style.color = mode==='xova' ? '#a78bfa' : '#60a5fa';
+  sendBtn.className = mode==='xova' ? 'xova-mode' : '';
+  sendBtn.style.background = mode==='xova' ? '#7c3aed' : '#4f46e5';
+  document.getElementById('inp').placeholder = mode==='xova' ? 'Talk to Xova...' : 'Message Forge (Claude)...';
+  add('sys', 'switched to ' + (mode==='xova' ? 'Xova (Ollama · fast)' : 'Forge (Claude · deep)'));
+};
+
 async function send(){
-  const inp=document.getElementById('inp');
-  const t=inp.value.trim(); if(!t) return;
+  const inp = document.getElementById('inp');
+  const t = inp.value.trim(); if(!t) return;
   inp.value=''; inp.style.height='';
-  add('adam',t);
-  try{
-    const r=await fetch('/msg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:t})});
-    if(!r.ok) add('sys','send failed: '+r.status);
-  }catch(e){add('sys','offline: '+e.message);}
+  add('adam', t);
+  if(mode==='xova'){
+    // Governor: synchronous response from persona_governor via Ollama
+    thinking = add('xova', '...', 'thinking');
+    try{
+      const r = await fetch('/governor',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:t})});
+      const d = await r.json();
+      if(thinking){ thinking.remove(); thinking=null; }
+      if(d.ok) add('xova', d.response||'');
+      else add('sys','governor error: '+(d.error||r.status));
+    }catch(e){
+      if(thinking){ thinking.remove(); thinking=null; }
+      add('sys','offline: '+e.message);
+    }
+  }else{
+    // Forge: async via forge_inbox -> replies poll
+    try{
+      const r=await fetch('/msg',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content:t})});
+      if(!r.ok) add('sys','send failed: '+r.status);
+    }catch(e){add('sys','offline: '+e.message);}
+  }
 }
-document.getElementById('btn').onclick=send;
+
+sendBtn.onclick=send;
 document.getElementById('inp').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();send();}});
 document.getElementById('inp').addEventListener('input',function(){this.style.height='';this.style.height=Math.min(this.scrollHeight,120)+'px';});
-function add(cls,text){
+
+function add(cls,text,extra){
   const f=document.getElementById('feed');
-  const d=document.createElement('div'); d.className='b '+cls; d.textContent=text;
+  const d=document.createElement('div');
+  d.className='b '+cls+(extra?' '+extra:'');
+  d.textContent=text;
   f.appendChild(d); f.scrollTop=f.scrollHeight;
+  return d;
 }
+
 async function poll(){
   try{
     const r=await fetch('/replies?since='+lastTs);
@@ -155,8 +205,7 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                     replies = [e for e in data if e.get("ts", 0) > since and e.get("from") == "forge"]
             except Exception:
                 pass
-            self._json({"replies": replies[-30:]})
-            return
+            self._json({"replies": replies[-30:]}); return
 
         if path == "/status":
             goal = None
@@ -176,35 +225,62 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                 "active_goal": goal,
                 "forge_mode":  flags.get("forgeMode", "unknown"),
                 "ts":          time.time(),
-            })
-            return
+            }); return
 
         self.send_response(404); self.end_headers()
 
     def do_POST(self):
-        if self.path.split("?")[0] != "/msg":
-            self.send_response(404); self.end_headers(); return
+        path = self.path.split("?")[0]
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length)
-        try:
-            payload = json.loads(body)
-            text = str(payload.get("content") or payload.get("text") or "").strip()
-            if not text:
-                self._json({"ok": False, "error": "empty message"}, 400); return
-            msg = {
-                "ts":             int(time.time()),
-                "from":           "phone",
-                "text":           text,
-                "correlation_id": f"phone-{int(time.time() * 1000)}",
-            }
-            tmp = FORGE_INBOX + ".tmp"
-            os.makedirs(os.path.dirname(FORGE_INBOX), exist_ok=True)
-            with open(tmp, "w", encoding="utf-8") as fh:
-                json.dump(msg, fh, ensure_ascii=False)
-            os.replace(tmp, FORGE_INBOX)
-            self._json({"ok": True, "ts": msg["ts"]})
-        except Exception as exc:
-            self._json({"ok": False, "error": str(exc)}, 500)
+
+        if path == "/msg":
+            try:
+                payload = json.loads(body)
+                text = str(payload.get("content") or payload.get("text") or "").strip()
+                if not text:
+                    self._json({"ok": False, "error": "empty message"}, 400); return
+                msg = {
+                    "ts":             int(time.time()),
+                    "from":           "phone",
+                    "text":           text,
+                    "correlation_id": f"phone-{int(time.time() * 1000)}",
+                }
+                tmp = FORGE_INBOX + ".tmp"
+                os.makedirs(os.path.dirname(FORGE_INBOX), exist_ok=True)
+                with open(tmp, "w", encoding="utf-8") as fh:
+                    json.dump(msg, fh, ensure_ascii=False)
+                os.replace(tmp, FORGE_INBOX)
+                self._json({"ok": True, "ts": msg["ts"]})
+            except Exception as exc:
+                self._json({"ok": False, "error": str(exc)}, 500)
+            return
+
+        if path == "/governor":
+            try:
+                payload = json.loads(body)
+                text = str(payload.get("content") or payload.get("text") or "").strip()
+                if not text:
+                    self._json({"ok": False, "error": "empty message"}, 400); return
+                r = subprocess.run(
+                    [sys.executable, PERSONA_GOVERNOR,
+                     "--action", "chat", "--message", text],
+                    capture_output=True, text=True, timeout=130,
+                    creationflags=NO_WIN,
+                )
+                data = json.loads(r.stdout.strip()) if r.stdout.strip() else {}
+                if data.get("ok"):
+                    self._json({"ok": True, "response": data.get("response", ""),
+                                "history_len": data.get("history_len", 0), "ts": time.time()})
+                else:
+                    self._json({"ok": False, "error": data.get("error", "governor failed")}, 500)
+            except subprocess.TimeoutExpired:
+                self._json({"ok": False, "error": "governor timeout — model still loading, try again"}, 504)
+            except Exception as exc:
+                self._json({"ok": False, "error": str(exc)}, 500)
+            return
+
+        self.send_response(404); self.end_headers()
 
     def _json(self, data: dict, code: int = 200):
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
