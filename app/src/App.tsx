@@ -2017,17 +2017,21 @@ function App() {
     if (corpusMatch) {
       try {
         const raw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\corpus_index.json" });
-        const idx = JSON.parse(raw) as { entries: Array<{ path: string; name: string; excerpt: string; ext: string; mtime: number; root: string }>; count: number; generated_at_iso: string };
+        type CorpusEntry = { path: string; name?: string; title?: string; excerpt?: string; content?: string; ext?: string; mtime?: number; ts?: number; root?: string; source?: string; tags?: string[] };
+        const idx = JSON.parse(raw) as { entries: CorpusEntry[]; count: number; generated_at_iso?: string } | CorpusEntry[];
+        const idxEntries: CorpusEntry[] = Array.isArray(idx) ? idx : (idx as { entries: CorpusEntry[] }).entries ?? [];
+        const idxCount: number = Array.isArray(idx) ? idx.length : (idx as { count?: number }).count ?? idxEntries.length;
+        const idxBuilt: string = Array.isArray(idx) ? "" : (idx as { generated_at_iso?: string }).generated_at_iso ?? "";
         const q = corpusMatch[1]?.trim();
         if (!q) {
           // Stats view
           const byRoot: Record<string, number> = {};
           const byExt: Record<string, number> = {};
-          for (const e of idx.entries) { byRoot[e.root] = (byRoot[e.root] ?? 0) + 1; byExt[e.ext] = (byExt[e.ext] ?? 0) + 1; }
+          for (const e of idxEntries) { const r = e.root ?? e.source ?? "manual"; byRoot[r] = (byRoot[r] ?? 0) + 1; const x = e.ext ?? (e.tags ? ".manual" : "?"); byExt[x] = (byExt[x] ?? 0) + 1; }
           const rootLines = Object.entries(byRoot).map(([k, v]) => `  ${v.toString().padStart(4)}  ${k}`).join("\n");
           const extLines = Object.entries(byExt).map(([k, v]) => `${k}: ${v}`).join("  ·  ");
           setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
-            text: `📚 Corpus index — ${idx.count} entries (built ${idx.generated_at_iso})\n\nBy root:\n${rootLines}\n\nBy extension: ${extLines}\n\nSearch with \`/corpus <query>\`.`,
+            text: `📚 Corpus index — ${idxCount} entries (built ${idxBuilt || "unknown"})\n\nBy root:\n${rootLines}\n\nBy extension: ${extLines}\n\nSearch with \`/corpus <query>\`.`,
           }]);
           return;
         }
@@ -2039,32 +2043,43 @@ function App() {
           return;
         }
         const threshold = tokens.length >= 2 ? 2 : 1;
-        type Hit = { entry: typeof idx.entries[0]; score: number; nameHit: boolean };
+        type Hit = { entry: CorpusEntry; score: number; nameHit: boolean };
         const scored: Hit[] = [];
-        for (const e of idx.entries) {
-          const haystack = (e.name + " " + e.excerpt).toLowerCase();
+        for (const e of idxEntries) {
+          const label = e.name ?? e.title ?? "";
+          const body  = e.excerpt ?? e.content ?? "";
+          const haystack = (label + " " + body).toLowerCase();
           let score = 0;
           for (const t of tokens) if (haystack.includes(t)) score++;
-          const nameHit = tokens.some((t) => e.name.toLowerCase().includes(t));
+          const nameHit = tokens.some((t) => label.toLowerCase().includes(t));
           if (nameHit) score += 2; // boost name matches
           if (score >= threshold) scored.push({ entry: e, score, nameHit });
         }
-        scored.sort((a, b) => b.score - a.score || b.entry.mtime - a.entry.mtime);
+        scored.sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          const at = a.entry.mtime ?? (a.entry.ts ? a.entry.ts * 1000 : 0);
+          const bt = b.entry.mtime ?? (b.entry.ts ? b.entry.ts * 1000 : 0);
+          return bt - at;
+        });
         const top = scored.slice(0, 12);
         if (top.length === 0) {
           setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
-            text: `No matches in corpus for "${q}".  (${idx.count} entries scanned, ${tokens.length} significant tokens: ${tokens.join(", ")})`,
+            text: `No matches in corpus for "${q}".  (${idxCount} entries scanned, ${tokens.length} significant tokens: ${tokens.join(", ")})`,
           }]);
           return;
         }
         const lines = top.map((h) => {
-          const date = new Date(h.entry.mtime).toLocaleDateString();
-          const root = h.entry.root.replace(/\\/g, "/").split("/").pop();
+          const ts = h.entry.mtime ?? (h.entry.ts ? h.entry.ts * 1000 : 0);
+          const date = ts ? new Date(ts).toLocaleDateString() : "unknown";
+          const rawRoot = h.entry.root ?? h.entry.source ?? "manual";
+          const root = rawRoot.replace(/\\/g, "/").split("/").pop();
           const star = h.nameHit ? "★" : " ";
-          return `${star} **${h.entry.name}**  _(${root}, ${date}, score ${h.score})_\n   \`${h.entry.path}\`\n   ${h.entry.excerpt.slice(0, 220).replace(/\s+/g, " ")}…`;
+          const label = h.entry.name ?? h.entry.title ?? "(untitled)";
+          const body  = (h.entry.excerpt ?? h.entry.content ?? "").slice(0, 220).replace(/\s+/g, " ");
+          return `${star} **${label}**  _(${root}, ${date}, score ${h.score})_\n   \`${h.entry.path}\`\n   ${body}…`;
         }).join("\n\n");
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
-          text: `📚 Corpus search — ${top.length} of ${scored.length} match${scored.length === 1 ? "" : "es"} for "${q}":\n\n${lines}\n\n*★ = filename hit. Open path directly to read full content.*`,
+          text: `📚 Corpus search — ${top.length} of ${scored.length} match${scored.length === 1 ? "" : "es"} for "${q}":\n\n${lines}\n\n*★ = title hit. Open path directly to read full content.*`,
         }]);
       } catch (e) {
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
