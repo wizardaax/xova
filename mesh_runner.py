@@ -508,6 +508,12 @@ def _humanize(result: dict) -> str:
     if "docstring_coverage_pct" in result:
         pct = result.get("docstring_coverage_pct", 0)
         return f"doc coverage: {pct:.0f}%"
+    if "module_doc_coverage" in result or "function_doc_coverage" in result:
+        # DocKeeperAgent audit returns separate coverage floats (0.0–1.0)
+        mc = result.get("module_doc_coverage", 0) * 100
+        fc = result.get("function_doc_coverage", 0) * 100
+        cc = result.get("class_doc_coverage", 0) * 100
+        return f"doc coverage: modules {mc:.0f}% · funcs {fc:.0f}% · classes {cc:.0f}%"
 
     if "observation" in result:
         obs   = result["observation"]
@@ -521,6 +527,10 @@ def _humanize(result: dict) -> str:
 
     if "phase_state" in result:
         return f"phase → {result['phase_state']}"
+    if "current_phase" in result:
+        # PhaseTrackerAgent returns current_phase + drift_detected
+        drift = " (drift)" if result.get("drift_detected") else ""
+        return f"phase → {result['current_phase']}{drift}"
 
     if "average_coherence" in result:
         avg     = result.get("average_coherence", 0)
@@ -530,18 +540,30 @@ def _humanize(result: dict) -> str:
         return f"coherence monitor · avg {avg:.2f} · {status}"
 
     if action == "aeon":
+        if not result.get("ran", True):
+            return f"AEON field · engine unavailable ({result.get('reason', 'unknown')})"
         series = result.get("thrust_series", [{}])
         thrust = series[0].get("thrust", 0) if series else 0
-        return f"AEON field · thrust {thrust:.4f} N"
+        # Thrust is ~nN range — use scientific notation to avoid misleading "0.0000 N"
+        return f"AEON field · thrust {thrust:.3e} N"
     if "point_count" in result or "points" in result:
         n = result.get("point_count", len(result.get("points", [])))
         return f"field weave · {n} phyllotaxis points"
 
     if "final_ratio" in result:
         return f"Lucas convergence → φ={result['final_ratio']:.6f}"
+    if "ratio" in result and "phi" in result:
+        # LucasAnalystAgent convergence: returns "ratio" not "final_ratio"
+        ratio = result.get("ratio", 0)
+        err   = result.get("error", 0)
+        return f"Lucas convergence → φ={ratio:.6f} (err {err:.2e})"
     if "sequence" in result:
         seq = result["sequence"]
         return f"Lucas sequence · {len(seq)} terms"
+    if "values" in result and action == "sequence":
+        # LucasAnalystAgent sequence: returns dict of {n: value} under "values"
+        vals = result.get("values", {})
+        return f"Lucas sequence · {len(vals)} terms"
 
     if "stability" in result or "classification" in result:
         s = result.get("stability", result.get("classification", "?"))
