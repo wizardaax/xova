@@ -34,7 +34,8 @@ def _already_running() -> bool:
     try:
         result = subprocess.run(
             ["powershell.exe", "-NoProfile", "-Command",
-             "Get-CimInstance Win32_Process -Filter \"name='pythonw.exe'\" "
+             "Get-CimInstance Win32_Process "
+             "-Filter \"name='pythonw.exe' OR name='python.exe'\" "
              "| Select-Object -ExpandProperty CommandLine"],
             capture_output=True, text=True, timeout=10,
             creationflags=0x08000000,
