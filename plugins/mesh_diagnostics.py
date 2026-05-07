@@ -126,6 +126,34 @@ def _dispatch_stats() -> dict:
     }
 
 
+_INTERESTING_KINDS = {"cycle_end", "evo_apply", "evo_end", "error", "sentinel_violation"}
+
+
+def _last_events(n: int = 12) -> list[dict]:
+    events: list[dict] = []
+    try:
+        with open(MESH_FEED, encoding="utf-8", errors="replace") as fh:
+            lines = fh.readlines()[-500:]
+    except FileNotFoundError:
+        return events
+    for ln in reversed(lines):
+        try:
+            e = json.loads(ln)
+            if e.get("kind") in _INTERESTING_KINDS:
+                events.append({
+                    "ts":        e.get("ts", 0),
+                    "kind":      e.get("kind", ""),
+                    "agent":     (e.get("label") or e.get("agent_id") or "")[:20],
+                    "content":   str(e.get("content", ""))[:80],
+                    "coherence": e.get("coherence"),
+                })
+                if len(events) >= n:
+                    break
+        except Exception:
+            continue
+    return events
+
+
 def action_report() -> dict:
     return {
         "ok":        True,
@@ -134,6 +162,7 @@ def action_report() -> dict:
         "nodes":     _board_stats(),
         "goals":     _goal_stats(),
         "swarm":     _dispatch_stats(),
+        "events":    _last_events(),
     }
 
 

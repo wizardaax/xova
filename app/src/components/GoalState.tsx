@@ -91,7 +91,8 @@ interface SelfEvalEntry { ts: number; agent: string; score: number; hit?: string
 interface AgentStrategy { strategy: string; score: number; ts: number; goal_id?: string; }
 interface AgentNode { name: string; alive: boolean; age_s: number; model: string; mode: string; coh_w: number | null; }
 interface MeshFeed { cycles_1h: number; cycles_10m: number; errors_1h: number; agents_active_1h: string[]; avg_coherence_1h: number | null; }
-interface MeshReport { ok: boolean; ts: number; feed: MeshFeed; nodes: AgentNode[]; goals: { by_status: Record<string, number>; active_stuck: Array<{ id: string; text: string; age_m: number; owner: string }> }; swarm: { dispatched_min_ago: number; avg_coherence?: number; eval_score?: number; passed?: number; total_agents?: number } }
+interface MeshEvent { ts: number; kind: string; agent: string; content: string; coherence?: number | null; }
+interface MeshReport { ok: boolean; ts: number; feed: MeshFeed; nodes: AgentNode[]; goals: { by_status: Record<string, number>; active_stuck: Array<{ id: string; text: string; age_m: number; owner: string }> }; swarm: { dispatched_min_ago: number; avg_coherence?: number; eval_score?: number; passed?: number; total_agents?: number }; events?: MeshEvent[] }
 interface SelfModProposal {
   id:              string;
   file_path:       string;
@@ -1015,6 +1016,32 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                     {meshReport.feed.agents_active_1h.map(a => (
                       <span key={a} className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[7px] font-mono">{a}</span>
                     ))}
+                  </div>
+                </div>
+              )}
+              {(meshReport.events?.length ?? 0) > 0 && (
+                <div className="bg-zinc-900 rounded p-2">
+                  <div className="text-[8px] text-zinc-500 uppercase tracking-wider mb-1.5">recent events</div>
+                  <div className="space-y-0.5">
+                    {meshReport.events!.map((ev, i) => {
+                      const kindColor = ev.kind === "error" || ev.kind === "sentinel_violation" ? "#f87171"
+                        : ev.kind === "evo_apply" ? "#a78bfa"
+                        : ev.kind === "evo_end" ? "#34d399"
+                        : "#52525b";
+                      const kindShort = ev.kind === "cycle_end" ? "cyc" : ev.kind === "evo_apply" ? "evo+" : ev.kind === "evo_end" ? "evo✓" : ev.kind === "error" ? "ERR" : ev.kind.slice(0, 4);
+                      const cleanContent = ev.content.replace(/[^\x20-\x7E -￿]/g, "").trim();
+                      return (
+                        <div key={i} className="flex gap-1.5 text-[8px] border-b border-zinc-800/50 pb-0.5 last:border-0">
+                          <span className="text-zinc-700 shrink-0 w-[42px]">{fmtTs(ev.ts)}</span>
+                          <span className="font-mono shrink-0 w-[28px]" style={{ color: kindColor }}>{kindShort}</span>
+                          <span className="text-zinc-600 shrink-0 w-[40px] truncate">{ev.agent}</span>
+                          <span className="text-zinc-400 flex-1 min-w-0 truncate">{cleanContent}</span>
+                          {ev.coherence !== null && ev.coherence !== undefined && (
+                            <span className="shrink-0 font-mono text-[7px]" style={{ color: cohColor(ev.coherence) }}>{ev.coherence.toFixed(3)}</span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
