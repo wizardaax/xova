@@ -40,6 +40,7 @@ interface Proposal {
   goal_id?:  string;
 }
 interface UcbEntry { q: number; n: number; }
+interface DomainSlot { ok?: boolean; score?: number; ts?: number; sweep?: Array<{ quality?: number }>; optimal?: { quality?: number } }
 interface UcbReward {
   cycle:        number;
   goal_idx:     number;
@@ -81,6 +82,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [proposals,   setProposals]   = useState<Proposal[]>([]);
   const [ucbState,    setUcbState]    = useState<UcbEntry[]>([]);
   const [ucbReward,   setUcbReward]   = useState<UcbReward | null>(null);
+  const [domainScores, setDomainScores] = useState<(number | null)[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [proposing,   setProposing]   = useState(false);
   const [newGoal,     setNewGoal]     = useState("");
@@ -109,13 +111,27 @@ export function GoalState({ onClose }: { onClose: () => void }) {
       const uRaw = await invoke<string>("xova_read_file", { path: UCB_STORE });
       setUcbState(JSON.parse(uRaw) as UcbEntry[]);
     } catch { setUcbState([]); }
-    // Load UCB last reward from context_broker
+    // Load UCB last reward + domain plugin scores from context_broker
     try {
       const bRaw = await invoke<string>("xova_read_file", { path: BROKER_PATH });
       const broker = JSON.parse(bRaw) as { slots: Record<string, unknown> };
       const slot = broker.slots?.["xova.ucb_last_reward"] as UcbReward | undefined;
       if (slot?.cycle) setUcbReward(slot);
-    } catch { /* broker may not have slot yet */ }
+      // Domain scores indexed by ROTATING_GOALS order
+      const DOMAIN_SLOT_KEYS = [
+        "xova.aeon_sweep_result", "xova.ci_health", "xova.repo_sync",
+        "xova.lucas_phase", "xova.corpus_recall", "xova.ternary_eval", "xova.field_weave",
+      ];
+      const dScores = DOMAIN_SLOT_KEYS.map(key => {
+        const s = broker.slots?.[key] as DomainSlot | undefined;
+        if (!s || !s.ok) return null;
+        if (key === "xova.aeon_sweep_result") {
+          return typeof s.optimal?.quality === "number" ? s.optimal.quality : null;
+        }
+        return typeof s.score === "number" ? s.score : null;
+      });
+      setDomainScores(dScores);
+    } catch { /* broker may not have slots yet */ }
     setLoading(false);
   }, []);
 
@@ -265,18 +281,39 @@ export function GoalState({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {/* UCB goal weights — shown when ucbState loaded */}
+      {/* UCB goal weights + domain scores — shown when ucbState loaded */}
       {ucbState.length > 0 && (view === "active" || view === "all") && (
         <div className="px-3 py-1.5 border-b border-zinc-800 shrink-0">
-          <div className="text-[8px] uppercase tracking-wider text-zinc-600 mb-1">φ-ucb goal weights</div>
-          <div className="flex flex-wrap gap-1">
-            {ucbState.map((u, i) => (
-              <div key={i} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800">
-                <span className="text-zinc-500 text-[8px]">{ROTATING_GOAL_NAMES[i] ?? i}</span>
-                <span className="text-violet-400 text-[8px] font-mono">{u.q.toFixed(3)}</span>
-                <span className="text-zinc-600 text-[8px]">n={u.n}</span>
-              </div>
-            ))}
+          <div className="text-[8px] uppercase tracking-wider text-zinc-600 mb-1">φ-ucb · domain scores</div>
+          <div className="flex flex-col gap-0.5">
+            {ucbState.map((u, i) => {
+              const ds = domainScores[i] ?? null;
+              const dsColor = ds === null ? "#52525b"
+                : ds >= 0.8 ? "#34d399"
+                : ds >= 0.6 ? "#fbbf24"
+                : "#f87171";
+              const barW = ds !== null ? Math.round(ds * 48) : 0;
+              return (
+                <div key={i} className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800/60">
+                  <span className="text-zinc-500 text-[8px] w-[76px] shrink-0 truncate">{ROTATING_GOAL_NAMES[i] ?? i}</span>
+                  <span className="text-violet-400 text-[8px] font-mono w-[32px] shrink-0">{u.q.toFixed(3)}</span>
+                  <span className="text-zinc-700 text-[7px] w-[20px] shrink-0">n={u.n}</span>
+                  <div className="flex items-center gap-1 ml-auto">
+                    {ds !== null && (
+                      <>
+                        <div className="relative h-1.5 w-12 bg-zinc-800 rounded-full overflow-hidden">
+                          <div className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${barW}px`, backgroundColor: dsColor }} />
+                        </div>
+                        <span className="text-[8px] font-mono w-[28px] text-right shrink-0" style={{ color: dsColor }}>
+                          {(ds * 100).toFixed(0)}%
+                        </span>
+                      </>
+                    )}
+                    {ds === null && <span className="text-zinc-700 text-[8px] w-[28px] text-right">—</span>}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
