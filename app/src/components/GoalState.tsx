@@ -10,6 +10,7 @@ const GOAL_MGR        = `python "C:\\Xova\\plugins\\goal_manager.py"`;
 const GOAL_PROPOSER   = `python "C:\\Xova\\plugins\\goal_proposer.py"`;
 const DREAM_CMD       = `python "C:\\Xova\\plugins\\dream_consolidator.py" --action consolidate`;
 const SCAN_CMD        = `python "C:\\Xova\\plugins\\domain_scan.py"`;
+const SELF_EVAL_STORE = "C:\\Xova\\memory\\self_eval_store.json";
 
 interface ProgressEntry {
   ts:        number;
@@ -65,6 +66,7 @@ interface UcbReward {
   blended:       number;
   ts:            number;
 }
+interface SelfEvalEntry { ts: number; agent: string; score: number; hit?: string[]; missed?: string[]; }
 
 async function xovaRun(cmd: string): Promise<string> {
   const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
@@ -98,6 +100,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [ucbReward,   setUcbReward]   = useState<UcbReward | null>(null);
   const [domainScores, setDomainScores] = useState<(number | null)[]>([]);
   const [ltmData,      setLtmData]      = useState<LtmData | null>(null);
+  const [evalHistory,  setEvalHistory]  = useState<SelfEvalEntry[]>([]);
   const [dreamRunning, setDreamRunning] = useState(false);
   const [scanRunning,  setScanRunning]  = useState(false);
   const [loading,     setLoading]     = useState(true);
@@ -154,6 +157,12 @@ export function GoalState({ onClose }: { onClose: () => void }) {
       const ltmRaw = await invoke<string>("xova_read_file", { path: LTM_PATH });
       setLtmData(JSON.parse(ltmRaw) as LtmData);
     } catch { /* ltm may not exist yet */ }
+    // Load self-eval history for trend chart
+    try {
+      const seRaw = await invoke<string>("xova_read_file", { path: SELF_EVAL_STORE });
+      const seData = JSON.parse(seRaw) as { history?: SelfEvalEntry[] };
+      setEvalHistory(seData.history ?? []);
+    } catch { /* ok */ }
     setLoading(false);
   }, []);
 
@@ -411,8 +420,44 @@ export function GoalState({ onClose }: { onClose: () => void }) {
               {dreamRunning ? "running…" : "run consolidate"}
             </button>
           </div>
+          {/* Self-eval trend chart — always visible once history exists */}
+          {evalHistory.length > 0 && (() => {
+                const CHART_H = 44; const CHART_W = 220; const PAD = 4;
+                const entries = evalHistory.slice(-20);
+                const bw = Math.floor((CHART_W - PAD * 2) / entries.length);
+                const ABBR: Record<string, string> = { mesh: "M", mesh_test: "T", swarm: "S" };
+                const latest = entries[entries.length - 1].score;
+                return (
+                  <div className="bg-zinc-900 rounded p-2">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[8px] text-zinc-500 uppercase tracking-wider">self-eval trend</span>
+                      <span className="text-[9px] font-mono" style={{ color: cohColor(latest) }}>{latest.toFixed(4)}</span>
+                    </div>
+                    <svg width={CHART_W} height={CHART_H + 12} style={{ overflow: "visible" }}>
+                      <line x1={PAD} y1={CHART_H - 0.9711 * CHART_H} x2={PAD + bw * entries.length} y2={CHART_H - 0.9711 * CHART_H}
+                        stroke="#7c3aed" strokeWidth="0.5" strokeDasharray="2 2" />
+                      {entries.map((e, idx) => {
+                        const bh = Math.max(1, Math.round(e.score * CHART_H));
+                        const x = PAD + idx * bw;
+                        const col = cohColor(e.score);
+                        return (
+                          <g key={idx}>
+                            <rect x={x + 1} y={CHART_H - bh} width={bw - 2} height={bh} fill={col} opacity={0.85} rx={1} />
+                            <text x={x + bw / 2} y={CHART_H + 10} textAnchor="middle" fontSize="6" fill="#52525b">
+                              {ABBR[e.agent] ?? "?"}
+                            </text>
+                          </g>
+                        );
+                      })}
+                      <text x={PAD + bw * entries.length + 2} y={CHART_H - 0.9711 * CHART_H + 2} fontSize="6" fill="#7c3aed">φ</text>
+                    </svg>
+                    <div className="text-zinc-700 text-[7px] mt-0.5">{evalHistory.length} evals · M=mesh T=mesh_test S=swarm · φ=0.9711</div>
+                  </div>
+                );
+          })()}
+          {/* Dream consolidator sections — only when ltmData available */}
           {!ltmData ? (
-            <div className="text-zinc-600 text-[10px] text-center py-8">dream consolidator not yet run</div>
+            <div className="text-zinc-600 text-[10px] text-center py-4">dream consolidator not yet run</div>
           ) : (
             <>
               {/* Cycle health grid */}
