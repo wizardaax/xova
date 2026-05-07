@@ -3475,6 +3475,70 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       }
       return;
     }
+    // /cipher — WormCipher + Kryptos research agent
+    if (slash === "/cipher" || slash === "/cipher-test" || slash === "/cipher-papers" || slash === "/kryptos") {
+      const action = slash === "/cipher-test" ? "roundtrip_test" : slash === "/cipher-papers" ? "scan_papers" : slash === "/kryptos" ? "kryptos_status" : "status";
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python "C:\\Xova\\plugins\\cipher_agent.py" --action ${action}`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const parsed = JSON.parse(wrap.stdout.trim()) as { ok: boolean; error?: string; roundtrip?: boolean; papers_found?: number; papers?: { name: string; ext: string }[]; corpus_hits?: number; worm_impl_ok?: boolean; plaintext_len?: number; ciphertext_len?: number; top_results?: string[] };
+        if (!parsed.ok) {
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: `cipher agent error: ${parsed.error || wrap.stderr}` }]);
+        } else if (action === "roundtrip_test") {
+          const ok = parsed.roundtrip ? "PASS" : "FAIL";
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: `WormCipher roundtrip: ${ok}\nPlaintext: ${parsed.plaintext_len}b → Ciphertext: ${parsed.ciphertext_len}b → Recovered: ${ok}` }]);
+        } else if (action === "scan_papers") {
+          const papers = (parsed.papers || []).map((p) => `  • ${p.name}${p.ext}`).join("\n");
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: `Cipher papers (${parsed.papers_found} found in ziltrix-sch-core):\n${papers}` }]);
+        } else {
+          const lines = [
+            `Cipher agent status`,
+            `Corpus hits: ${parsed.corpus_hits ?? 0}  |  WormCipher impl: ${parsed.worm_impl_ok ? "OK" : "MISSING"}`,
+            ...(parsed.top_results || []).map((r) => `  • ${r}`),
+          ];
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: lines.join("\n") }]);
+        }
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: `cipher agent failed: ${String(e).slice(0, 200)}` }]);
+      }
+      return;
+    }
+    // /mesh-diag — live mesh health report
+    if (slash === "/mesh-diag" || slash === "/diag" || slash === "/health") {
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python "C:\\Xova\\plugins\\mesh_diagnostics.py"`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const d = JSON.parse(wrap.stdout.trim()) as { ok: boolean; feed: { cycles_1h: number; cycles_10m: number; errors_1h: number; agents_active_1h: string[]; avg_coherence_1h: number | null }; nodes: { name: string; alive: boolean; age_s: number }[]; goals: { by_status: Record<string, number>; active_stuck: { id: string; text: string; age_m: number }[] }; swarm: { avg_coherence?: number; eval_score?: number; passed?: number; total_agents?: number } };
+        const f = d.feed;
+        const sw = d.swarm;
+        const alive = d.nodes.filter((n) => n.alive).map((n) => n.name);
+        const stuck = (d.goals.active_stuck || []).map((g) => `  • [${g.id}] ${g.text.slice(0, 55)} (${g.age_m}m)`).join("\n");
+        const lines = [
+          `Mesh diagnostics`,
+          `Cycles: ${f.cycles_1h}/h (${f.cycles_10m} last 10m)  |  Errors: ${f.errors_1h}/h  |  Coherence: ${f.avg_coherence_1h ?? "n/a"}`,
+          `Alive nodes: ${alive.join(", ")}  |  Agents active: ${f.agents_active_1h.length}`,
+          sw.avg_coherence != null ? `Swarm: coh=${sw.avg_coherence?.toFixed(3)}  eval=${sw.eval_score?.toFixed(3)}  agents=${sw.passed}/${sw.total_agents}` : "",
+          d.goals.active_stuck?.length ? `Stuck goals (${d.goals.active_stuck.length}):\n${stuck}` : "No stuck goals",
+        ].filter(Boolean);
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: lines.join("\n") }]);
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: `mesh diagnostics failed: ${String(e).slice(0, 200)}` }]);
+      }
+      return;
+    }
     // /sovereign — audit which features are local-only vs need internet
     if (slash === "/sovereign" || slash === "/sovrigne" || slash === "/local") {
       // Probe key local services
@@ -4833,6 +4897,10 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           { id: "p-self-mod",     group: "Cognition", label: "🔧 Self-mod proposals — /self-mod <file> | <description>",        hint: "/self-mod",  run: () => onSend("/self-mod") },
           { id: "p-curiosity",    group: "Cognition", label: "🔍 Curiosity scan — detect knowledge gaps, create exploration goals", hint: "/curiosity", run: () => onSend("/curiosity") },
           { id: "p-dream",        group: "Cognition", label: "🌙 Dream consolidation — distil 24h of fleet data into long-term memory", hint: "/dream", run: () => onSend("/dream") },
+          { id: "p-cipher",       group: "Cognition", label: "🔐 Cipher agent — WormCipher + Kryptos research status",    hint: "/cipher",      run: () => onSend("/cipher") },
+          { id: "p-cipher-test",  group: "Cognition", label: "🔐 Cipher roundtrip test — verify WormCipher encrypt/decrypt", hint: "/cipher-test", run: () => onSend("/cipher-test") },
+          { id: "p-cipher-papers",group: "Cognition", label: "📄 Cipher papers — scan ziltrix-sch-core for all cipher research", hint: "/cipher-papers", run: () => onSend("/cipher-papers") },
+          { id: "p-mesh-diag",    group: "Cognition", label: "🩺 Mesh diagnostics — live health report (cycles, nodes, stuck goals)", hint: "/mesh-diag", run: () => onSend("/mesh-diag") },
           { id: "p-phone-bridge", group: "Cognition", label: "📱 Start Forge phone bridge (port 7340 — chat from phone)", hint: "/phone-bridge", run: () => onSend("/phone-bridge") },
           { id: "p-lan-on",    group: "Cognition", label: "🌐 Start LAN gateway (phone-as-thin-client)",            hint: "/lan-on",    run: () => onSend("/lan-on") },
           { id: "p-lan-off",   group: "Cognition", label: "🚫 Stop LAN gateway",                                    hint: "/lan-off",   run: () => onSend("/lan-off") },

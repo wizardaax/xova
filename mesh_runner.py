@@ -352,6 +352,10 @@ def _read_flags() -> dict:
         return {"evolutionEnabled": True, "cognitiveEnabled": True, "meshRunnerEnabled": True}
 
 
+def _log(msg: str) -> None:
+    _append({"ts": time.time(), "kind": "log", "agent_id": "00", "label": "Mesh Runner", "content": msg})
+
+
 def _append(data: dict) -> None:
     os.makedirs(os.path.dirname(FEED_PATH), exist_ok=True)
     line = json.dumps(data, ensure_ascii=False) + "\n"

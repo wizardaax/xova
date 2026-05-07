@@ -29,6 +29,49 @@ OLLAMA_URL      = "http://localhost:11434/api/chat"
 HISTORY_CAP     = 20   # conversation turns kept (each turn = user + assistant)
 OUTBOX_CAP      = 200  # max lines in persona_outbox.jsonl
 
+# Shared Ollama file lock — same lock Jarvis uses, serializes all inference
+_LOCK_FILE    = r"C:\Xova\memory\ollama.lock"
+_LOCK_TIMEOUT = 90    # wait up to 90s for Jarvis to finish its request
+_LOCK_POLL    = 0.5
+
+
+def _lock_acquire(owner: str = "persona_governor") -> bool:
+    """Acquire the shared Ollama lock. Returns True on success, False on timeout.
+    Steals locks older than 45s (Jarvis doesn't always release on timeout)."""
+    deadline = time.monotonic() + _LOCK_TIMEOUT
+    lock_dir = os.path.dirname(_LOCK_FILE)
+    os.makedirs(lock_dir, exist_ok=True)
+    while time.monotonic() < deadline:
+        try:
+            fd = os.open(_LOCK_FILE, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+            with os.fdopen(fd, "w") as fh:
+                json.dump({"pid": os.getpid(), "owner": owner, "ts": time.time()}, fh)
+            return True
+        except FileExistsError:
+            # Steal lock if it's stale (holder timed out but didn't release)
+            try:
+                with open(_LOCK_FILE) as fh:
+                    data = json.load(fh)
+                lock_age = time.time() - data.get("ts", 0)
+                if lock_age > 45:
+                    # Old enough to be stale — steal it
+                    os.unlink(_LOCK_FILE)
+                    continue
+            except Exception:
+                try:
+                    os.unlink(_LOCK_FILE)
+                except Exception:
+                    pass
+        time.sleep(_LOCK_POLL)
+    return False
+
+
+def _lock_release() -> None:
+    try:
+        os.unlink(_LOCK_FILE)
+    except Exception:
+        pass
+
 _SYSTEM = (
     "You are Xova — the unified voice of a 13-agent cognitive fleet built by Adam Snellman. "
     "You synthesize the fleet's collective intelligence into a single, coherent executive voice. "
@@ -183,7 +226,7 @@ def _sce88_check_fleet() -> tuple[list[str], float]:
 
 # ── Ollama ────────────────────────────────────────────────────────────────────
 
-def _call_ollama(messages: list[dict]) -> str:
+def _call_ollama(messages: list[dict], timeout: int = 120) -> str:
     payload = json.dumps({
         "model":   MODEL,
         "messages": messages,
@@ -194,14 +237,17 @@ def _call_ollama(messages: list[dict]) -> str:
         OLLAMA_URL, data=payload,
         headers={"Content-Type": "application/json"},
     )
+    _lock_acquire("persona_governor")
     try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             data = json.loads(resp.read())
             return data.get("message", {}).get("content", "").strip()
     except urllib.error.URLError as exc:
         return f"[ollama unavailable: {exc}]"
     except Exception as exc:
         return f"[ollama error: {exc}]"
+    finally:
+        _lock_release()
 
 
 # ── actions ───────────────────────────────────────────────────────────────────
@@ -318,19 +364,31 @@ def action_consult(proposal: str) -> dict:
         "stream":   False,
         "options":  {"temperature": 0.2, "num_predict": 60},
     }).encode("utf-8")
-    req = urllib.request.Request(
-        OLLAMA_URL, data=payload,
-        headers={"Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            data   = json.loads(resp.read())
-            answer = data.get("message", {}).get("content", "").strip()
-    except Exception as exc:
-        # Fail-open: Ollama unavailable doesn't block the fleet
-        answer = ""
+
+    # Retry up to 3 times with backoff — Ollama queue may be briefly saturated
+    answer = ""
+    last_exc: str = ""
+    for attempt in range(3):
+        if attempt > 0:
+            time.sleep(15 * attempt)  # 15s, 30s between retries
+        req = urllib.request.Request(
+            OLLAMA_URL, data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        _lock_acquire("persona_governor_consult")
+        try:
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                data   = json.loads(resp.read())
+                answer = data.get("message", {}).get("content", "").strip()
+            break  # success
+        except Exception as exc:
+            last_exc = str(exc)
+        finally:
+            _lock_release()
+
+    if not answer:
         _append_outbox(f"[consult-failopen] {proposal[:120]}", "consult")
-        return {"ok": True, "approved": True, "reason": f"ollama unavailable — auto-approved ({exc})"}
+        return {"ok": True, "approved": True, "reason": f"ollama unavailable after 3 attempts — auto-approved ({last_exc})"}
 
     first_line = answer.splitlines()[0] if answer else ""
     approved   = not first_line.upper().startswith("VETOED")

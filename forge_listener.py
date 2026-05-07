@@ -580,12 +580,15 @@ def _update_board() -> None:
         board.setdefault("jarvis", {"alive": False, "last_seen": 0, "current_task": None})
         board.setdefault("shared", {"active_correlation_id": None, "context": {}})
         board["forge"] = {
-            "alive":            True,
-            "last_seen":        int(now * 1000),
-            "forge_mode":       _mode(),
-            "calls_this_hour":  _rate_used(),
-            "model":            "claude-sonnet-4-6",
-            "checkin_ts":       now,
+            "alive":             True,
+            "last_seen":         int(now * 1000),
+            "forge_mode":        _mode(),
+            "calls_this_hour":   _rate_used(),
+            "model":             "claude-sonnet-4-6",
+            "checkin_ts":        now,
+            "coherence_weight":  1.0,
+            "capabilities":      ["code", "research", "file-edit", "decision-gate",
+                                  "task-creation", "web-search", "multi-step-planning"],
         }
         board["ts"] = int(now * 1000)
         tmp = AGENT_BOARD + ".tmp"
