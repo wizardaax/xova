@@ -6,10 +6,14 @@ const W = 360, H = 100, PAD = { t: 6, r: 6, b: 18, l: 6 };
 const IW = W - PAD.l - PAD.r, IH = H - PAD.t - PAD.b;
 
 interface ThrustPoint { t: number; phi: number; thrust: number }
+interface AeonQuality { score: number; validated: boolean; max_rel_err: number; n_steps: number; peak_thrust: number }
 interface AeonSummary {
   thrust_series: ThrustPoint[];
   validation: { matched: boolean; max_rel_err: number };
   constants: { PHI?: number; PSI_RESONANCE?: number; GOLDEN_ANGLE_DEG?: number; ALPHA_INV?: number; [k: string]: number | undefined };
+  quality?: AeonQuality;
+  source?: string;
+  cycle?: number;
 }
 
 export function AeonThrust({ onClose }: { onClose: () => void }) {
@@ -91,6 +95,27 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
             {summary.validation.matched ? "✓ PhaseII validated" : "⚠ validation mismatch"}{" "}
             <span className="opacity-60 font-normal">err={summary.validation.max_rel_err.toFixed(4)}</span>
           </div>
+
+          {/* Sprint 3: quality score + peak thrust */}
+          {summary.quality && (
+            <div className="grid grid-cols-3 gap-1">
+              <div className="bg-zinc-900 rounded p-1.5 text-center">
+                <div className="text-[8px] text-zinc-500 mb-0.5">quality</div>
+                <div className="font-bold text-[12px]" style={{
+                  color: summary.quality.score >= 0.8 ? "#34d399" : summary.quality.score >= 0.5 ? "#fbbf24" : "#f87171"
+                }}>{(summary.quality.score * 100).toFixed(1)}%</div>
+              </div>
+              <div className="bg-zinc-900 rounded p-1.5 text-center">
+                <div className="text-[8px] text-zinc-500 mb-0.5">peak thrust</div>
+                <div className="text-violet-300 font-mono text-[10px] font-bold">{summary.quality.peak_thrust.toExponential(3)} N</div>
+              </div>
+              <div className="bg-zinc-900 rounded p-1.5 text-center">
+                <div className="text-[8px] text-zinc-500 mb-0.5">n steps</div>
+                <div className="text-zinc-200 font-bold text-[12px]">{summary.quality.n_steps}</div>
+                {summary.source && <div className="text-[7px] text-zinc-600">{summary.source}{summary.cycle ? ` c${summary.cycle}` : ""}</div>}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

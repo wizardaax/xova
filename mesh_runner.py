@@ -1052,19 +1052,33 @@ def main() -> None:
                         "gated":    gated,
                     })
 
-                    # AEON Sprint 1: publish AEON thrust + validation to context_broker
+                    # AEON Sprint 1+3: publish AEON thrust + validation + quality to context_broker
                     if r.get("action") == "aeon" and r.get("ran"):
                         series = r.get("thrust_series", [])
                         val    = r.get("validation", {})
+                        # Sprint 3: quality score (inline, avoids importing aeon_summary)
+                        _n_pts = len(series)
+                        _validated = bool(val.get("matched", False))
+                        _rel_err = float(val.get("max_rel_err") or 1.0)
+                        _thrusts = [abs(p.get("thrust", 0)) for p in series]
+                        _peak = max(_thrusts) if _thrusts else 0.0
+                        _val_sc = 1.0 if _validated else max(0.0, 1.0 - _rel_err * 5)
+                        _err_sc = max(0.0, 1.0 - _rel_err / 0.1)
+                        _dep_sc = min(1.0, _n_pts / 10.0)
+                        _aeon_quality = round(0.4 * _val_sc + 0.3 * _err_sc + 0.2 * _dep_sc + 0.1, 4)
                         _write_context_slot("xova.aeon_last_run", {
                             "cycle":          cycle_num,
                             "thrust_n":       series[0].get("thrust") if series else None,
                             "thrust_series":  series,
-                            "validated":      val.get("matched", False),
-                            "max_rel_err":    val.get("max_rel_err"),
+                            "validated":      _validated,
+                            "max_rel_err":    _rel_err,
                             "constants":      r.get("constants", {}),
+                            "quality_score":  _aeon_quality,
+                            "peak_thrust":    _peak,
+                            "n_steps":        _n_pts,
                             "ts":             time.time(),
                         })
+                        _log(f"aeon: quality={_aeon_quality:.3f} peak={_peak:.3e} n={_n_pts}")
 
                 forge_alive, forge_weight = _read_forge_status()
                 node_count  = len(result.results) + (1 if forge_alive else 0)
@@ -1115,6 +1129,21 @@ def main() -> None:
                         _goal_kw.append(f"persistent goal state · self-evaluate to modify behaviour · coherence {_coh:.3f}")
                     if _phase in ("stabilized", "delta_adjustment"):
                         _goal_kw.append("loop stable · sessions persist · build coherent behaviour")
+                    # Sprint 3: enrich summary with AEON quality when available
+                    try:
+                        with open(CONTEXT_BROKER, encoding="utf-8") as _bf:
+                            _bs = json.load(_bf)
+                        _aeon_slot = _bs.get("slots", {}).get("xova.aeon_last_run", {})
+                        _aq = _aeon_slot.get("quality_score")
+                        _ap = _aeon_slot.get("peak_thrust")
+                        if _aq is not None:
+                            _goal_kw.append(
+                                f"aeon thrust pipeline enhanced · validate output quality {_aq:.3f}"
+                                f" · peak thrust {_ap:.3e} N"
+                                + (" · PhaseII validated" if _aeon_slot.get("validated") else "")
+                            )
+                    except Exception:
+                        pass
                     _kw_str = " · ".join(_goal_kw)
                     cycle_summary = (
                         f"cycle {cycle_num} — {_kw_str + ' · ' if _kw_str else ''}"
