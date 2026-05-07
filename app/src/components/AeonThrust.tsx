@@ -4,6 +4,8 @@ import { invoke } from "@tauri-apps/api/core";
 const CMD_SUMMARY  = `python "C:\\Xova\\plugins\\aeon_summary.py"`;
 const CMD_SWEEP    = `python "C:\\Xova\\plugins\\aeon_sweep.py"`;
 const CMD_CI       = `python "C:\\Xova\\plugins\\ci_health.py" --action run`;
+const CMD_WEAVE    = `python "C:\\Xova\\plugins\\field_weave.py" --action run`;
+const CMD_TERNARY  = `python "C:\\Xova\\plugins\\ternary_eval.py" --action run`;
 const RUN_LOG_PATH = "C:\\Xova\\memory\\aeon_run_log.jsonl";
 const BROKER_PATH  = "C:\\Xova\\memory\\context_broker.json";
 const W = 360, H = 100, PAD = { t: 6, r: 6, b: 18, l: 6 };
@@ -33,6 +35,7 @@ interface RunRecord { ts: number; quality?: number; peak_thrust?: number; n_step
 interface CIRepo { name: string; ok: boolean; passed: number; failed: number; errors: number; duration_s: number; error?: string }
 interface CIHealth { ok: boolean; repos: CIRepo[]; total_passed: number; total_failed: number; total_errors: number; score: number; duration_s: number; ts: number }
 interface FieldWeaveSlot { ok: boolean; score: number; golden_deg?: number; coh_score?: number; radial_score?: number; angle_fid?: number; ts: number }
+interface TernarySlot { ok: boolean; score: number; affirm: number; neutral: number; deny: number; ternary_balance: number; gate_rate: number; stability: number; ts: number }
 
 export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [summary,    setSummary]    = useState<AeonSummary | null>(null);
@@ -40,7 +43,10 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
   const [ciHealth,   setCiHealth]   = useState<CIHealth | null>(null);
   const [ciRunning,  setCiRunning]  = useState(false);
-  const [fieldWeave, setFieldWeave] = useState<FieldWeaveSlot | null>(null);
+  const [fieldWeave,    setFieldWeave]    = useState<FieldWeaveSlot | null>(null);
+  const [ternary,       setTernary]       = useState<TernarySlot | null>(null);
+  const [weaveRunning,  setWeaveRunning]  = useState(false);
+  const [ternaryRunning, setTernaryRunning] = useState(false);
   const [err,        setErr]        = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [sweeping,   setSweeping]   = useState(false);
@@ -70,6 +76,8 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       if (ci?.ok) setCiHealth(ci);
       const fw = broker.slots?.["xova.field_weave"] as FieldWeaveSlot | undefined;
       if (fw?.ok) setFieldWeave(fw);
+      const te = broker.slots?.["xova.ternary_eval"] as TernarySlot | undefined;
+      if (te?.ok) setTernary(te);
     } catch { /**/ }
   }, []);
 
@@ -81,6 +89,26 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       if (parsed.ok) { setCiHealth(parsed); setTab("ci"); }
     } catch { /**/ }
     setCiRunning(false);
+  }, []);
+
+  const runWeave = useCallback(async () => {
+    setWeaveRunning(true);
+    try {
+      const stdout = await xovaRun(CMD_WEAVE);
+      const parsed = JSON.parse(stdout) as FieldWeaveSlot;
+      if (parsed.ok) setFieldWeave(parsed);
+    } catch { /**/ }
+    setWeaveRunning(false);
+  }, []);
+
+  const runTernary = useCallback(async () => {
+    setTernaryRunning(true);
+    try {
+      const stdout = await xovaRun(CMD_TERNARY);
+      const parsed = JSON.parse(stdout) as TernarySlot;
+      if (parsed.ok) setTernary(parsed);
+    } catch { /**/ }
+    setTernaryRunning(false);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -211,10 +239,14 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
             <div className="text-[8px] text-zinc-600 uppercase tracking-wider mb-1.5 flex items-center gap-2">
               <span>φ-spiral phase trajectory</span>
               {fieldWeave && (
-                <span className="ml-auto font-mono" style={{ color: fieldWeave.score >= 0.8 ? "#34d399" : "#fbbf24" }}>
+                <span className="font-mono" style={{ color: fieldWeave.score >= 0.8 ? "#34d399" : "#fbbf24" }}>
                   {(fieldWeave.score * 100).toFixed(0)}%
                 </span>
               )}
+              <button onClick={runWeave} disabled={weaveRunning}
+                className="ml-auto px-1.5 py-0.5 rounded border border-violet-800 text-violet-400 text-[7px] hover:bg-violet-900/30 disabled:opacity-40">
+                {weaveRunning ? "…" : "run weave"}
+              </button>
             </div>
             <div className="flex items-start gap-3">
               <svg viewBox={`0 0 ${SPIRAL_SZ} ${SPIRAL_SZ}`} width={SPIRAL_SZ} height={SPIRAL_SZ} style={{ flexShrink: 0 }}>
@@ -248,6 +280,43 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
                 )}
               </div>
             </div>
+          </div>
+
+          {/* Ternary gate mini-panel */}
+          <div className="bg-zinc-900 rounded p-2">
+            <div className="text-[8px] text-zinc-600 uppercase tracking-wider mb-1.5 flex items-center gap-2">
+              <span>SCE-88 ternary gates</span>
+              {ternary && (
+                <span className="font-mono" style={{ color: ternary.score >= 0.8 ? "#34d399" : ternary.score >= 0.6 ? "#fbbf24" : "#f87171" }}>
+                  {(ternary.score * 100).toFixed(0)}%
+                </span>
+              )}
+              <button onClick={runTernary} disabled={ternaryRunning}
+                className="ml-auto px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-400 text-[7px] hover:bg-zinc-800/40 disabled:opacity-40">
+                {ternaryRunning ? "…" : "run ternary"}
+              </button>
+            </div>
+            {ternary ? (
+              <div className="flex items-center gap-3 text-[8px]">
+                <div className="flex gap-0.5">
+                  {[...Array(4)].map((_, i) => {
+                    const gateVal = i < ternary.affirm ? 1 : i < (ternary.affirm + ternary.neutral) ? 0 : -1;
+                    return (
+                      <div key={i} className="w-5 h-5 rounded flex items-center justify-center text-[9px] font-bold"
+                        style={{ background: gateVal === 1 ? "#052e16" : gateVal === 0 ? "#451a03" : "#1c0618",
+                          color: gateVal === 1 ? "#34d399" : gateVal === 0 ? "#fbbf24" : "#f87171", border: `1px solid ${gateVal === 1 ? "#166534" : gateVal === 0 ? "#92400e" : "#7c3aed"}` }}>
+                        {gateVal === 1 ? "✓" : gateVal === 0 ? "?" : "✕"}
+                      </div>
+                    );
+                  })}
+                </div>
+                <span className="text-zinc-600">bal <span className="text-zinc-300">{ternary.ternary_balance.toFixed(3)}</span></span>
+                <span className="text-zinc-600">stab <span className="text-zinc-300">{ternary.stability.toFixed(3)}</span></span>
+                <span className="text-zinc-600">rate <span className="text-zinc-300">{ternary.gate_rate.toFixed(3)}</span></span>
+              </div>
+            ) : (
+              <div className="text-zinc-700 text-[8px]">no data — click run ternary</div>
+            )}
           </div>
         </div>
       )}
