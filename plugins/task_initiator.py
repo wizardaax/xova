@@ -40,6 +40,7 @@ STAGNANT_SEC     = 7200   # 2 hours
 RATE_WINDOW      = 3600   # 1 hour per trigger type
 MAX_PER_DAY      = 8
 ERROR_LOOKBACK   = 600    # 10 min
+STUCK_MIN        = 30     # goals with no progress entries older than this are "stuck"
 
 
 # ── state ─────────────────────────────────────────────────────────────────────
@@ -417,10 +418,67 @@ def action_list() -> dict:
     return {"ok": True, "count": len(auto), "goals": auto}
 
 
+def action_execute_stuck() -> dict:
+    """Write a progress note on active goals with no progress older than STUCK_MIN minutes.
+
+    This surfaces stuck goals in the mesh_feed so they appear in diagnostics.
+    It does not autonomously resolve them — it records that the executor examined
+    them and found no available resolution path, keeping goal_store accurate.
+    """
+    try:
+        with open(GOAL_STORE, encoding="utf-8") as fh:
+            store = json.load(fh)
+    except Exception:
+        return {"ok": True, "acted": 0, "reason": "goal_store unreadable"}
+
+    now    = time.time()
+    cutoff = now - (STUCK_MIN * 60)
+    acted  = []
+    skipped: list[dict] = []
+
+    for gid, g in store.get("goals", {}).items():
+        if g.get("status") != "active":
+            continue
+        if g.get("created_at", now) > cutoff:
+            continue
+        if g.get("progress"):
+            continue
+
+        gtext = (g.get("text") or "")[:80]
+        owner = g.get("owner", "")
+        age_m = int((now - g.get("created_at", now)) / 60)
+        note  = (
+            f"[execute_stuck] auto-executor examined · age={age_m}m · owner={owner} · "
+            f"no blocking executor available — goal pending human review or sub-goal creation"
+        )
+        try:
+            r = subprocess.run(
+                [sys.executable, GOAL_MANAGER,
+                 "--action", "progress",
+                 "--id",     gid,
+                 "--note",   note,
+                 "--agent",  "task_initiator"],
+                capture_output=True, text=True, timeout=8,
+                creationflags=NO_WIN, encoding="utf-8",
+            )
+            data = json.loads(r.stdout.strip()) if r.stdout.strip() else {}
+            acted.append({"id": gid[:12], "text": gtext, "owner": owner, "age_m": age_m, "ok": data.get("ok", False)})
+        except Exception as exc:
+            skipped.append({"id": gid[:12], "reason": str(exc)[:60]})
+
+    return {
+        "ok":         True,
+        "stuck_found": len(acted) + len(skipped),
+        "acted":      len(acted),
+        "skipped":    len(skipped),
+        "goals":      acted,
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--action", default="scan",
-                    choices=["scan", "status", "list"])
+                    choices=["scan", "status", "list", "execute_stuck"])
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -428,6 +486,8 @@ def main() -> None:
         result = action_scan()
     elif args.action == "status":
         result = action_status()
+    elif args.action == "execute_stuck":
+        result = action_execute_stuck()
     else:
         result = action_list()
 
