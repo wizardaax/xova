@@ -3319,6 +3319,33 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       }
       return;
     }
+    // /xova-chat <message> — direct conversation with the persona governor
+    if (slash === "/xova-chat" || slash === "/xchat" || slash === "/talk") {
+      const msg = input.slice(slash.length).trim();
+      if (!msg) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: "Usage: /xova-chat <message>  (or /xchat, /talk)",
+        }]);
+        return;
+      }
+      const escaped = msg.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python "C:\\Xova\\plugins\\persona_governor.py" --action chat --message "${escaped}"`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const parsed = JSON.parse(wrap.stdout.trim()) as { ok: boolean; response?: string; history_len?: number; error?: string };
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: parsed.ok ? (parsed.response || "…") : `governor error: ${parsed.error || wrap.stderr}`,
+        }]);
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: `xova-chat failed: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
     // /curiosity — trigger a proactive knowledge gap scan
     if (slash === "/curiosity" || slash === "/explore" || slash === "/gaps") {
       try {
@@ -4741,6 +4768,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           { id: "p-cycles",    group: "Cognition", label: "🔁 Recent cognitive cycles (last 10)",            hint: "/cycles",    run: () => onSend("/cycles") },
           { id: "p-vault",     group: "Cognition", label: "📸 Vault snapshot history",                       hint: "/vault",     run: () => onSend("/vault") },
           { id: "p-persona",      group: "Cognition", label: "🎭 Persona governor — Xova speaks as unified fleet voice",  hint: "/persona",      run: () => onSend("/persona") },
+          { id: "p-xova-chat",    group: "Cognition", label: "💬 Talk to Xova — /xova-chat <message>",                    hint: "/xova-chat",    run: () => onSend("/xova-chat ") },
           { id: "p-curiosity",    group: "Cognition", label: "🔍 Curiosity scan — detect knowledge gaps, create exploration goals", hint: "/curiosity", run: () => onSend("/curiosity") },
           { id: "p-dream",        group: "Cognition", label: "🌙 Dream consolidation — distil 24h of fleet data into long-term memory", hint: "/dream", run: () => onSend("/dream") },
           { id: "p-phone-bridge", group: "Cognition", label: "📱 Start Forge phone bridge (port 7340 — chat from phone)", hint: "/phone-bridge", run: () => onSend("/phone-bridge") },

@@ -154,6 +154,7 @@ SELF_EVAL         = r"C:\Xova\plugins\self_eval.py"
 SELF_EVAL_STORE   = r"C:\Xova\memory\self_eval_store.json"
 GOAL_DECOMPOSER   = r"C:\Xova\plugins\goal_decomposer.py"
 DISPATCH_STORE    = r"C:\Xova\memory\swarm_dispatch.json"
+AGENT_BOARD       = r"C:\Xova\memory\agent_board.json"
 SWARM_INTERVAL    = 3600  # seconds between swarm decompositions for same goal
 TASK_INITIATOR      = r"C:\Xova\plugins\task_initiator.py"
 DREAM_CONSOLIDATOR  = r"C:\Xova\plugins\dream_consolidator.py"
@@ -163,6 +164,17 @@ SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
 DREAM_EVERY_H       = 6    # dream consolidation every N hours
 _last_dream_ts: float = 0.0
+
+
+def _read_forge_status() -> tuple[bool, float]:
+    """Read Forge node alive + coherence_weight from agent_board. Safe fallback."""
+    try:
+        with open(AGENT_BOARD, encoding="utf-8") as fh:
+            board = json.load(fh)
+        forge = board.get("forge", {})
+        return bool(forge.get("alive", False)), float(forge.get("coherence_weight", 0.0))
+    except Exception:
+        return False, 0.0
 
 
 def _load_active_goal() -> tuple[str | None, str | None]:
@@ -769,18 +781,24 @@ def main() -> None:
                         "gated":    gated,
                     })
 
+                forge_alive, forge_weight = _read_forge_status()
+                node_count  = len(result.results) + (1 if forge_alive else 0)
+                forge_suffix = f" + Forge({forge_weight:.2f})" if forge_alive else ""
                 _append({
-                    "ts":       time.time(),
-                    "kind":     "cycle_end",
-                    "agent_id": "01",
-                    "label":    "Orchestrator",
-                    "content":  (
-                        f"cycle {cycle_num} complete · avg coherence "
-                        f"{result.average_coherence:.2f} · "
+                    "ts":          time.time(),
+                    "kind":        "cycle_end",
+                    "agent_id":    "01",
+                    "label":       "Orchestrator",
+                    "content":     (
+                        f"cycle {cycle_num} complete · {node_count} nodes · avg coherence "
+                        f"{result.average_coherence:.2f}{forge_suffix} · "
                         f"phase {cycle._derive_phase().lower()} · "
                         f"{result.crest}"
                     ),
-                    "coherence": round(result.average_coherence, 3),
+                    "coherence":   round(result.average_coherence, 3),
+                    "forge_alive": forge_alive,
+                    "forge_weight": round(forge_weight, 3),
+                    "node_count":  node_count,
                 })
 
                 reward = max(0.0, min(1.0, result.average_coherence - 0.1 * getattr(result, "gated_count", 0)))

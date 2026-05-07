@@ -449,7 +449,8 @@ def _sce88_check(text: str, from_agent: str) -> str:
             violations = gate["violations"]
             summary = "; ".join(violations)
             _log(f"SCE-88 advisory: {summary}")
-            _append_violation("forge", f"forge_inbox:{from_agent}", coherence, violations)
+            origin = "agi" if from_agent in ("xova", "swarm", "task_initiator", "curiosity_engine", "mesh") else "human"
+            _append_violation("forge", f"forge_inbox:{from_agent}", coherence, violations, origin=origin)
             return f"[SCE-88: {summary}] {text}"
     except Exception as exc:
         _log(f"SCE-88 gate error (non-blocking): {exc}")
