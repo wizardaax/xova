@@ -161,12 +161,14 @@ DREAM_CONSOLIDATOR  = r"C:\Xova\plugins\dream_consolidator.py"
 CURIOSITY_ENGINE    = r"C:\Xova\plugins\curiosity_engine.py"
 PERSONA_GOVERNOR    = r"C:\Xova\plugins\persona_governor.py"
 CIPHER_AGENT        = r"C:\Xova\plugins\cipher_agent.py"
+CORPUS_SIGNER       = r"C:\Xova\plugins\corpus_signer.py"
 SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
 DREAM_EVERY_H       = 6    # dream consolidation every N hours
 CIPHER_EVERY_N      = 50   # cipher agent status every 50 cycles (~50 min)
 FEDERATION_EVERY_N  = 60   # cross-AI fact federation sync every 60 cycles (~1 hr)
 STUCK_EVERY_N       = 10   # stuck-goal executor every 10 cycles (~10 min)
+SIGNING_EVERY_N     = 120  # corpus RSA signing every 120 cycles (~2 hr) — only signs new entries
 _last_dream_ts: float = 0.0
 
 
@@ -306,6 +308,21 @@ def _run_fact_federation() -> None:
         _log("fact_federation: sync triggered")
     except Exception as exc:
         _log(f"fact_federation error: {exc}")
+
+
+def _run_corpus_signing() -> None:
+    """Round 108: sign new manual corpus entries with RSA-2048 for integrity proof."""
+    if not os.path.exists(CORPUS_SIGNER):
+        return
+    try:
+        subprocess.Popen(
+            [sys.executable, CORPUS_SIGNER, "sign"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        _log("corpus_signer: sign triggered")
+    except Exception as exc:
+        _log(f"corpus_signer error: {exc}")
 
 
 def _run_self_eval(output: str, goal: str, goal_id: str, agent: str = "mesh") -> float:
@@ -1119,6 +1136,10 @@ def main() -> None:
         # Round 107: cross-AI fact federation — sync Jarvis + Xova facts every hour
         if cycle_num % FEDERATION_EVERY_N == 0:
             _run_fact_federation()
+
+        # Round 108: RSA-2048 corpus signing — sign any new manual entries every 2 hr
+        if cycle_num % SIGNING_EVERY_N == 0:
+            _run_corpus_signing()
 
         time.sleep(CYCLE_INTERVAL)
 
