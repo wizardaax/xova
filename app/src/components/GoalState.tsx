@@ -14,6 +14,10 @@ const SELF_EVAL_STORE    = "C:\\Xova\\memory\\self_eval_store.json";
 const SWARM_DISPATCH_PATH = "C:\\Xova\\memory\\swarm_dispatch.json";
 const SELF_MOD_STORE  = "C:\\Xova\\memory\\self_mod_proposals.json";
 const REPO_SYNC_CMD   = `python "C:\\Xova\\plugins\\repo_sync.py" --action run`;
+const AGENT_BOARD_PATH = "C:\\Xova\\memory\\agent_board.json";
+const MESH_DIAG_CMD   = `python "C:\\Xova\\plugins\\mesh_diagnostics.py" --action report`;
+const TASK_INIT_CMD   = `python "C:\\Xova\\plugins\\task_initiator.py" --action scan`;
+const CURIOSITY_CMD   = `python "C:\\Xova\\plugins\\curiosity_engine.py" --action scan`;
 
 interface ProgressEntry {
   ts:        number;
@@ -85,6 +89,9 @@ interface UcbReward {
 }
 interface SelfEvalEntry { ts: number; agent: string; score: number; hit?: string[]; missed?: string[]; strategy?: string; }
 interface AgentStrategy { strategy: string; score: number; ts: number; goal_id?: string; }
+interface AgentNode { name: string; alive: boolean; age_s: number; model: string; mode: string; coh_w: number | null; }
+interface MeshFeed { cycles_1h: number; cycles_10m: number; errors_1h: number; agents_active_1h: string[]; avg_coherence_1h: number | null; }
+interface MeshReport { ok: boolean; ts: number; feed: MeshFeed; nodes: AgentNode[]; goals: { by_status: Record<string, number>; active_stuck: Array<{ id: string; text: string; age_m: number; owner: string }> }; swarm: { dispatched_min_ago: number; avg_coherence?: number; eval_score?: number; passed?: number; total_agents?: number } }
 interface SelfModProposal {
   id:              string;
   file_path:       string;
@@ -145,12 +152,17 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [newGoal,     setNewGoal]     = useState("");
   const [saving,      setSaving]      = useState(false);
   const [updatedAt,   setUpdatedAt]   = useState("");
-  const [view,        setView]        = useState<"active" | "all" | "proposals" | "dream" | "mods" | "repos">("active");
+  const [view,        setView]        = useState<"active" | "all" | "proposals" | "dream" | "mods" | "repos" | "mesh">("active");
   const [noteOpen,    setNoteOpen]    = useState<string | null>(null);  // goal id with open note input
   const [noteText,    setNoteText]    = useState("");
   const [noteSaving,  setNoteSaving]  = useState(false);
   const [histOpen,    setHistOpen]    = useState<string | null>(null);  // goal id with expanded history
   const [filterText,  setFilterText]  = useState("");
+  const [agentNodes,   setAgentNodes]   = useState<AgentNode[]>([]);
+  const [meshReport,   setMeshReport]   = useState<MeshReport | null>(null);
+  const [meshRunning,  setMeshRunning]  = useState(false);
+  const [taskRunning,  setTaskRunning]  = useState(false);
+  const [curioRunning, setCurioRunning] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -223,6 +235,21 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     try {
       const sdRaw = await invoke<string>("xova_read_file", { path: SWARM_DISPATCH_PATH });
       setSwarmDispatch(JSON.parse(sdRaw) as SwarmDispatch);
+    } catch { /* ok */ }
+    // Load agent board
+    try {
+      const abRaw = await invoke<string>("xova_read_file", { path: AGENT_BOARD_PATH });
+      const board = JSON.parse(abRaw) as Record<string, unknown>;
+      const now = Date.now() / 1000;
+      const nodes: AgentNode[] = Object.entries(board)
+        .filter(([k]) => k !== "ts")
+        .map(([name, info]) => {
+          const i = info as Record<string, unknown>;
+          const last = (i.checkin_ts as number) ?? ((i.last_seen as number ?? 0) / 1000);
+          return { name, alive: Boolean(i.alive), age_s: last ? Math.round(now - last) : -1, model: String(i.model ?? ""), mode: String(i.forge_mode ?? ""), coh_w: (i.coherence_weight as number | null) ?? null };
+        })
+        .sort((a, b) => a.name.localeCompare(b.name));
+      setAgentNodes(nodes);
     } catch { /* ok */ }
     setLoading(false);
   }, []);
@@ -310,6 +337,34 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     } catch { setScanRunning(false); }
   }, [refresh]);
 
+  const runMeshDiag = useCallback(async () => {
+    setMeshRunning(true);
+    try {
+      const stdout = await xovaRun(MESH_DIAG_CMD);
+      const parsed = JSON.parse(stdout) as MeshReport;
+      if (parsed.ok) setMeshReport(parsed);
+    } catch { /**/ }
+    setMeshRunning(false);
+  }, []);
+
+  const runTaskInit = useCallback(async () => {
+    setTaskRunning(true);
+    try {
+      await xovaRun(TASK_INIT_CMD);
+      await refresh();
+    } catch { /**/ }
+    setTaskRunning(false);
+  }, [refresh]);
+
+  const runCuriosity = useCallback(async () => {
+    setCurioRunning(true);
+    try {
+      await xovaRun(CURIOSITY_CMD);
+      await refresh();
+    } catch { /**/ }
+    setCurioRunning(false);
+  }, [refresh]);
+
   const runRepoSync = useCallback(async () => {
     setRepoRunning(true);
     try {
@@ -363,7 +418,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
           Goals{updatedAt ? ` · ${updatedAt}` : ""}
         </span>
         <div className="flex gap-1 ml-auto">
-          {(["active", "all", "proposals", "dream", "mods", "repos"] as const).map(v => (
+          {(["active", "all", "proposals", "dream", "mods", "repos", "mesh"] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={`px-2 py-0.5 rounded border text-[9px] transition-colors ${
                 view === v ? "border-emerald-600 text-emerald-300 bg-emerald-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"
@@ -875,7 +930,106 @@ export function GoalState({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {view !== "proposals" && view !== "dream" && view !== "mods" && view !== "repos" && (
+      {/* Mesh diagnostics view */}
+      {view === "mesh" && (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[8px] text-zinc-600 uppercase tracking-wider">cognitive mesh</span>
+            <button onClick={runMeshDiag} disabled={meshRunning}
+              className="px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 text-[8px] hover:bg-zinc-800/40 disabled:opacity-40 ml-auto">
+              {meshRunning ? "running…" : "run diagnostics"}
+            </button>
+            <button onClick={runTaskInit} disabled={taskRunning}
+              className="px-2 py-0.5 rounded border border-violet-700 text-violet-400 text-[8px] hover:bg-violet-900/30 disabled:opacity-40">
+              {taskRunning ? "scanning…" : "task scan"}
+            </button>
+            <button onClick={runCuriosity} disabled={curioRunning}
+              className="px-2 py-0.5 rounded border border-teal-700 text-teal-400 text-[8px] hover:bg-teal-900/30 disabled:opacity-40">
+              {curioRunning ? "scanning…" : "curiosity scan"}
+            </button>
+          </div>
+          {/* Agent board */}
+          {agentNodes.length > 0 && (
+            <div className="bg-zinc-900 rounded p-2 space-y-1">
+              <div className="text-[8px] text-zinc-500 uppercase tracking-wider mb-0.5">
+                agent board · {agentNodes.filter(n => n.alive).length}/{agentNodes.length} alive
+              </div>
+              {agentNodes.map(n => {
+                const ageMin = n.age_s >= 0 ? Math.round(n.age_s / 60) : null;
+                const ageCol = n.alive ? (ageMin !== null && ageMin < 5 ? "#34d399" : "#fbbf24") : "#f87171";
+                return (
+                  <div key={n.name} className="flex items-center gap-1.5 text-[8px]">
+                    <span style={{ color: ageCol }} className="shrink-0">{n.alive ? "●" : "○"}</span>
+                    <span className="text-zinc-300 w-[130px] shrink-0 truncate font-mono">{n.name}</span>
+                    {n.model && <span className="text-zinc-600 flex-1 truncate">{n.model.replace("wizardaax/", "")}</span>}
+                    {n.coh_w !== null && <span className="text-violet-400 font-mono shrink-0">{n.coh_w.toFixed(2)}</span>}
+                    {ageMin !== null && (
+                      <span className="shrink-0 w-[28px] text-right font-mono text-[7px]" style={{ color: ageCol }}>
+                        {ageMin < 60 ? `${ageMin}m` : `${Math.round(ageMin / 60)}h`}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {/* Mesh feed stats — from diagnostics run */}
+          {meshReport && (
+            <>
+              <div className="grid grid-cols-3 gap-1">
+                <div className="bg-zinc-900 rounded p-1.5 text-center">
+                  <div className="text-[7px] text-zinc-500 mb-0.5">cycles/h</div>
+                  <div className="text-zinc-200 font-bold text-[12px]">{meshReport.feed.cycles_1h}</div>
+                  <div className="text-zinc-600 text-[7px]">{meshReport.feed.cycles_10m}/10m</div>
+                </div>
+                <div className="bg-zinc-900 rounded p-1.5 text-center">
+                  <div className="text-[7px] text-zinc-500 mb-0.5">errors/h</div>
+                  <div className="font-bold text-[12px]" style={{ color: meshReport.feed.errors_1h > 0 ? "#f87171" : "#34d399" }}>
+                    {meshReport.feed.errors_1h}
+                  </div>
+                </div>
+                <div className="bg-zinc-900 rounded p-1.5 text-center">
+                  <div className="text-[7px] text-zinc-500 mb-0.5">avg coh/h</div>
+                  <div className="font-bold text-[12px]" style={{ color: cohColor(meshReport.feed.avg_coherence_1h ?? 0) }}>
+                    {meshReport.feed.avg_coherence_1h !== null ? meshReport.feed.avg_coherence_1h.toFixed(3) : "—"}
+                  </div>
+                </div>
+              </div>
+              {(meshReport.goals.active_stuck?.length ?? 0) > 0 && (
+                <div className="bg-zinc-900 rounded p-2">
+                  <div className="text-[8px] text-amber-500 uppercase tracking-wider mb-1">stuck goals (no progress)</div>
+                  {meshReport.goals.active_stuck.map((g, i) => (
+                    <div key={i} className="flex items-center gap-1.5 text-[8px] py-0.5 border-b border-zinc-800 last:border-0">
+                      <span className="text-amber-600 shrink-0">!</span>
+                      <span className="text-zinc-300 flex-1 truncate">{g.text}</span>
+                      <span className="text-zinc-600 shrink-0">{g.age_m}m</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {meshReport.feed.agents_active_1h.length > 0 && (
+                <div className="bg-zinc-900 rounded p-2">
+                  <div className="text-[8px] text-zinc-500 uppercase tracking-wider mb-1.5">active last hour</div>
+                  <div className="flex flex-wrap gap-1">
+                    {meshReport.feed.agents_active_1h.map(a => (
+                      <span key={a} className="px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400 text-[7px] font-mono">{a}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <div className="text-zinc-700 text-[7px]">
+                diagnostics run {fmtDate(meshReport.ts)} {fmtTs(meshReport.ts)}
+              </div>
+            </>
+          )}
+          {agentNodes.length === 0 && !meshReport && (
+            <div className="text-zinc-600 text-[10px] text-center py-4">click "run diagnostics" to load mesh state</div>
+          )}
+        </div>
+      )}
+
+      {view !== "proposals" && view !== "dream" && view !== "mods" && view !== "repos" && view !== "mesh" && (
       <div className="flex-1 overflow-y-auto">
         {filteredGoals.map(goal => {
           const isActive = goal.id === store.active_goal;
