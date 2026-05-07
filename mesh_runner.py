@@ -1055,10 +1055,9 @@ def main() -> None:
                     "node_count":  node_count,
                 })
 
-                reward = max(0.0, min(1.0, result.average_coherence - 0.1 * getattr(result, "gated_count", 0)))
-                _ucb_update(ucb_state, goal_idx, reward)
-                ucb_t += 1
-                _save_ucb_state(ucb_state)
+                # Base coherence reward; will be blended with self-eval below (Round 109)
+                _coh_reward = max(0.0, min(1.0, result.average_coherence - 0.1 * getattr(result, "gated_count", 0)))
+                _eval_score_for_ucb: float = 0.0
 
                 # SCE-88: publish cycle coherence to context_broker for advisory gate
                 _write_context_slot("xova.sce88_status", {
@@ -1091,8 +1090,30 @@ def main() -> None:
                         f"avg coh {_coh:.3f} · phase {_phase} · {_n} agents ran"
                     )
                     _write_goal_progress(active_goal_id, cycle_summary, result.average_coherence)
-                    eval_score = _run_self_eval(cycle_summary, active_goal_text, active_goal_id, "mesh")
-                    _log(f"self-eval: score={eval_score:.3f} vs goal")
+                    _eval_score_for_ucb = _run_self_eval(cycle_summary, active_goal_text, active_goal_id, "mesh")
+                    _log(f"self-eval: score={_eval_score_for_ucb:.3f} vs goal")
+
+                # Round 109: blend coherence + self-eval for UCB reward.
+                # When self-eval is available it reflects how well the current
+                # rotating goal is advancing the active master goal — giving the
+                # UCB selector a signal to favour goals that produce measurable
+                # progress, not just goals with high coherence.
+                if _eval_score_for_ucb > 0.0:
+                    reward = 0.6 * _coh_reward + 0.4 * _eval_score_for_ucb
+                else:
+                    reward = _coh_reward
+                _ucb_update(ucb_state, goal_idx, reward)
+                ucb_t += 1
+                _save_ucb_state(ucb_state)
+                _write_context_slot("xova.ucb_last_reward", {
+                    "cycle":        cycle_num,
+                    "goal_idx":     goal_idx,
+                    "goal":         goal,
+                    "coh_reward":   round(_coh_reward, 4),
+                    "eval_score":   round(_eval_score_for_ucb, 4),
+                    "blended":      round(reward, 4),
+                    "ts":           time.time(),
+                })
 
             except Exception as exc:
                 _append({
