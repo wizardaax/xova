@@ -15,23 +15,40 @@
 # Tauri
 **/src-tauri/target/
 
-# Local runtime state — these are user-private; back them up via the
-# scheduled XovaBackup task instead of committing.
-memory/voice_inbox.json
-memory/voice_user_inbox.json
-memory/jarvis_inbox.json
-memory/xova_chat_inbox.json
-memory/xova_chat_outbox.json
-memory/xova_command_inbox.json
-memory/snippets.md
-memory/notes.md
-memory/last_context.md
-memory/uploads/
-memory/screen.png
-memory/sessions/
-memory/voice_profile/
-memory/reminders.json
+# Local runtime state — user-private; back up via scheduled XovaBackup task.
 memory/*.json
+memory/*.jsonl
+memory/*.log
+memory/*.txt
+memory/*.md
+memory/*.png
+memory/*.jpg
+memory/*.wav
+memory/cycles/
+memory/evolution/
+memory/chat_log/
+memory/audit/
+memory/audit2/
+memory/audit3/
+memory/audit4/
+memory/audit5/
+memory/voice_memos/
+memory/voice_profile/
+memory/uploads/
+memory/sessions/
+memory/exports/
+memory/xova_shell/
+memory/phone_notes/
+
+# Per-agent recycle bin (append-only, managed by trash_keeper.py)
+trash/
+trash-absorb/
+
+# Browser control runtime data
+browser_data/
+
+# Alternative build target (non-standard)
+app/src-tauri/target_new/
 
 # IDE
 .vscode/
