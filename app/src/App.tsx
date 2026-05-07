@@ -3346,6 +3346,67 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       }
       return;
     }
+    // /self-mod — propose a code change through the Xova safety gate
+    if (slash === "/self-mod" || slash === "/propose" || slash === "/mod") {
+      const rest = input.slice(slash.length).trim();
+      if (!rest) {
+        // No args: show pending proposals
+        try {
+          const raw = await invoke<string>("xova_run", {
+            command: `python "C:\\Xova\\plugins\\self_modifier.py" --action pending`,
+            cwd: null, elevated: false,
+          });
+          const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+          const parsed = JSON.parse(wrap.stdout.trim()) as { ok: boolean; count?: number; proposals?: Array<{id: string; file_path: string; description: string; proposer: string; xova_approved: boolean; xova_reason: string; sce88_coherence: number}>; error?: string };
+          if (!parsed.ok) {
+            setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `self-mod error: ${parsed.error}` }]);
+          } else {
+            const lines = parsed.count === 0
+              ? ["No pending proposals. Use: /self-mod <file> | <description>"]
+              : [`🔧 ${parsed.count} pending self-mod proposal(s):`,
+                 ...(parsed.proposals || []).map((p) =>
+                   `  [${p.id}] ${p.file_path.split("\\").pop()}\n  ${p.description.slice(0,80)}\n  ✓ Xova: ${p.xova_reason} | coh=${p.sce88_coherence}`
+                 )];
+            setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: lines.join("\n") }]);
+          }
+        } catch (e) {
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `self-mod failed: ${String(e).slice(0,200)}` }]);
+        }
+        return;
+      }
+      // Expect format: "<file_path> | <description>"
+      const sep = rest.indexOf("|");
+      if (sep === -1) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: "Usage: /self-mod <file_path> | <description of change>\nExample: /self-mod C:\\Xova\\plugins\\task_initiator.py | Add retry backoff on subprocess failure",
+        }]);
+        return;
+      }
+      const filePath   = rest.slice(0, sep).trim();
+      const desc       = rest.slice(sep + 1).trim();
+      const escapedFile = filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      const escapedDesc = desc.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python "C:\\Xova\\plugins\\self_modifier.py" --action propose --file "${escapedFile}" --description "${escapedDesc}" --proposer "forge"`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const parsed = JSON.parse(wrap.stdout.trim()) as { ok: boolean; id?: string; approved?: boolean; reason?: string; sce88_coherence?: number; status?: string; skipped?: string; note?: string; error?: string };
+        if (!parsed.ok) {
+          const msg = parsed.skipped ? `Skipped (${parsed.skipped}): ${parsed.note || ""}` : `Error: ${parsed.error}`;
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: msg }]);
+        } else {
+          const icon = parsed.approved ? "✅" : "❌";
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: `${icon} [${parsed.id}] ${parsed.status}\nXova: ${parsed.reason}\nSCE-88 coh: ${parsed.sce88_coherence?.toFixed(3)}\nFile: ${filePath.split("\\").pop()}`,
+          }]);
+        }
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(), text: `self-mod failed: ${String(e).slice(0,200)}` }]);
+      }
+      return;
+    }
     // /curiosity — trigger a proactive knowledge gap scan
     if (slash === "/curiosity" || slash === "/explore" || slash === "/gaps") {
       try {
@@ -4769,6 +4830,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           { id: "p-vault",     group: "Cognition", label: "📸 Vault snapshot history",                       hint: "/vault",     run: () => onSend("/vault") },
           { id: "p-persona",      group: "Cognition", label: "🎭 Persona governor — Xova speaks as unified fleet voice",  hint: "/persona",      run: () => onSend("/persona") },
           { id: "p-xova-chat",    group: "Cognition", label: "💬 Talk to Xova — /xova-chat <message>",                    hint: "/xova-chat",    run: () => onSend("/xova-chat ") },
+          { id: "p-self-mod",     group: "Cognition", label: "🔧 Self-mod proposals — /self-mod <file> | <description>",        hint: "/self-mod",  run: () => onSend("/self-mod") },
           { id: "p-curiosity",    group: "Cognition", label: "🔍 Curiosity scan — detect knowledge gaps, create exploration goals", hint: "/curiosity", run: () => onSend("/curiosity") },
           { id: "p-dream",        group: "Cognition", label: "🌙 Dream consolidation — distil 24h of fleet data into long-term memory", hint: "/dream", run: () => onSend("/dream") },
           { id: "p-phone-bridge", group: "Cognition", label: "📱 Start Forge phone bridge (port 7340 — chat from phone)", hint: "/phone-bridge", run: () => onSend("/phone-bridge") },
