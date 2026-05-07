@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 const TRACE_PATH = "C:\\Xova\\memory\\action_trace.jsonl";
-const MAX_SHOW   = 50;
+const MAX_SHOW   = 200;
 
 interface TraceEntry {
   ts:      number;
@@ -33,6 +33,8 @@ export function ActionTrace({ onClose }: { onClose: () => void }) {
   const [entries, setEntries]     = useState<TraceEntry[]>([]);
   const [updatedAt, setUpdatedAt] = useState("");
   const [err, setErr]             = useState("");
+  const [textFilter, setTextFilter] = useState("");
+  const [actionFilter, setActionFilter] = useState("all");
 
   const load = useCallback(async () => {
     try {
@@ -83,6 +85,24 @@ export function ActionTrace({ onClose }: { onClose: () => void }) {
         ))}
       </div>
 
+      {/* Filter bar */}
+      <div className="flex gap-1.5 px-3 py-1.5 border-b border-zinc-800 shrink-0">
+        <input
+          value={textFilter}
+          onChange={e => setTextFilter(e.target.value)}
+          placeholder="filter…"
+          className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-[9px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-zinc-500 min-w-0"
+        />
+        <select
+          value={actionFilter}
+          onChange={e => setActionFilter(e.target.value)}
+          className="bg-zinc-900 border border-zinc-700 rounded px-1 py-0.5 text-[9px] text-zinc-300 focus:outline-none"
+        >
+          <option value="all">all</option>
+          {Object.keys(ACTION_COLOR).map(a => <option key={a} value={a}>{a}</option>)}
+        </select>
+      </div>
+
       {/* Entries */}
       <div className="flex-1 overflow-y-auto">
         {err && (
@@ -91,14 +111,20 @@ export function ActionTrace({ onClose }: { onClose: () => void }) {
         {!err && entries.length === 0 && (
           <div className="p-4 text-zinc-700 text-[9px] text-center">no entries yet</div>
         )}
-        {entries.map((e, i) => (
-          <div key={i} className="flex items-start gap-2 px-3 py-1.5 border-b border-zinc-900 hover:bg-zinc-900/40">
-            <span className="text-zinc-600 text-[9px] shrink-0 pt-px">{fmtTs(e.ts)}</span>
-            <span className={`text-[8px] px-1.5 py-px rounded border shrink-0 ${actionCls(e.action)}`}>{e.action}</span>
-            <span className="text-zinc-500 text-[9px] shrink-0">{e.plugin}</span>
-            <span className="text-zinc-300 text-[10px] flex-1 min-w-0 truncate">{e.summary}</span>
-          </div>
-        ))}
+        {entries
+          .filter(e =>
+            (actionFilter === "all" || e.action === actionFilter) &&
+            (!textFilter.trim() || e.plugin.toLowerCase().includes(textFilter.toLowerCase()) || e.summary.toLowerCase().includes(textFilter.toLowerCase()))
+          )
+          .map((e, i) => (
+            <div key={i} className="flex items-start gap-2 px-3 py-1.5 border-b border-zinc-900 hover:bg-zinc-900/40">
+              <span className="text-zinc-600 text-[9px] shrink-0 pt-px">{fmtTs(e.ts)}</span>
+              <span className={`text-[8px] px-1.5 py-px rounded border shrink-0 ${actionCls(e.action)}`}>{e.action}</span>
+              <span className="text-zinc-500 text-[9px] shrink-0">{e.plugin}</span>
+              <span className="text-zinc-300 text-[10px] flex-1 min-w-0 truncate">{e.summary}</span>
+            </div>
+          ))
+        }
       </div>
     </div>
   );
