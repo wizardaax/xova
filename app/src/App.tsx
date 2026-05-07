@@ -3274,6 +3274,32 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       }
       return;
     }
+    // /phone-bridge — start the Forge-connected LAN gateway on port 7340
+    if (slash === "/phone-bridge" || slash === "/forge-phone" || slash === "/pbridge") {
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python "C:\\Xova\\plugins\\phone_gateway_ctrl.py" --action start`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const parsed = JSON.parse(wrap.stdout.trim()) as { ok: boolean; url?: string; already_running?: boolean };
+        if (parsed.ok && parsed.url) {
+          const status = parsed.already_running ? "already running" : "started";
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: `Phone bridge ${status}.\n\nOpen on your phone:\n\n  ${parsed.url}\n\nMessages go straight to Forge (claude --print). Replies appear in the PWA within ~3s.\n\nMake sure Forge mode is set to live.`,
+          }]);
+        } else {
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: `phone bridge error: ${wrap.stdout || wrap.stderr}`,
+          }]);
+        }
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: `cannot start phone bridge: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
     // /sovereign — audit which features are local-only vs need internet
     if (slash === "/sovereign" || slash === "/sovrigne" || slash === "/local") {
       // Probe key local services
@@ -4627,6 +4653,7 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           { id: "p-dashboard", group: "Cognition", label: "📊 Dashboard (one-shot status across every subsystem)", hint: "/dashboard", run: () => onSend("/dashboard") },
           { id: "p-cycles",    group: "Cognition", label: "🔁 Recent cognitive cycles (last 10)",            hint: "/cycles",    run: () => onSend("/cycles") },
           { id: "p-vault",     group: "Cognition", label: "📸 Vault snapshot history",                       hint: "/vault",     run: () => onSend("/vault") },
+          { id: "p-phone-bridge", group: "Cognition", label: "📱 Start Forge phone bridge (port 7340 — chat from phone)", hint: "/phone-bridge", run: () => onSend("/phone-bridge") },
           { id: "p-lan-on",    group: "Cognition", label: "🌐 Start LAN gateway (phone-as-thin-client)",            hint: "/lan-on",    run: () => onSend("/lan-on") },
           { id: "p-lan-off",   group: "Cognition", label: "🚫 Stop LAN gateway",                                    hint: "/lan-off",   run: () => onSend("/lan-off") },
           // Cognition — fire the 13-agent cognitive cycle
