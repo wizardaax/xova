@@ -5,11 +5,12 @@ const BOARD = "C:\\Xova\\memory\\agent_board.json";
 
 interface DaemonDef { id: string; name: string; log: string; boardKey: string | null }
 const DAEMONS: DaemonDef[] = [
-  { id: "watchdog",  name: "Watchdog",    log: "C:\\Xova\\memory\\watchdog.log",       boardKey: null },
-  { id: "mesh",      name: "Mesh Runner", log: "C:\\Xova\\memory\\mesh_runner.log",     boardKey: null },
-  { id: "forge",     name: "Forge",       log: "C:\\Xova\\memory\\forge_listener.log",  boardKey: "forge" },
-  { id: "absorb",    name: "Absorb Loop", log: "C:\\Xova\\memory\\absorb.log",          boardKey: "absorb" },
-  { id: "sentinel",  name: "Sentinel",    log: "C:\\Xova\\memory\\sentinel.log",        boardKey: null },
+  { id: "watchdog",   name: "Watchdog",    log: "C:\\Xova\\memory\\watchdog.log",           boardKey: null },
+  { id: "forge",      name: "Forge",       log: "C:\\Xova\\memory\\forge_listener.log",      boardKey: "forge" },
+  { id: "absorb",     name: "Absorb Loop", log: "C:\\Xova\\memory\\absorb_loop.log",         boardKey: "absorb" },
+  { id: "federation", name: "Federation",  log: "C:\\Xova\\memory\\federation_manager.log",  boardKey: null },
+  { id: "sentinel",   name: "Sentinel",    log: "C:\\Xova\\memory\\sentinel.log",            boardKey: null },
+  { id: "vite",       name: "Vite Dev",    log: "C:\\Xova\\memory\\vite.log",                boardKey: null },
 ];
 
 function alive(board: Record<string, unknown>, d: DaemonDef): "alive" | "dead" | "unknown" {
@@ -18,10 +19,7 @@ function alive(board: Record<string, unknown>, d: DaemonDef): "alive" | "dead" |
     return entry?.alive === true ? "alive" : entry ? "dead" : "unknown";
   }
   if (d.id === "watchdog") return Object.keys(board).length > 0 ? "alive" : "unknown";
-  if (d.id === "mesh") {
-    const absorb = board.absorb as { cycles?: number } | undefined;
-    return (absorb?.cycles ?? 0) > 0 ? "alive" : "unknown";
-  }
+  if (d.id === "vite" || d.id === "federation") return "unknown";
   return "unknown";
 }
 
