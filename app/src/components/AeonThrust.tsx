@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 const CMD_SUMMARY  = `python "C:\\Xova\\plugins\\aeon_summary.py"`;
@@ -8,6 +8,10 @@ const RUN_LOG_PATH = "C:\\Xova\\memory\\aeon_run_log.jsonl";
 const BROKER_PATH  = "C:\\Xova\\memory\\context_broker.json";
 const W = 360, H = 100, PAD = { t: 6, r: 6, b: 18, l: 6 };
 const IW = W - PAD.l - PAD.r, IH = H - PAD.t - PAD.b;
+const PHI_SPIRAL = (1 + Math.sqrt(5)) / 2;
+const GOLDEN_ANGLE = 2 * Math.PI - 2 * Math.PI / PHI_SPIRAL;
+const SPIRAL_N = 50;
+const SPIRAL_SZ = 130;
 
 interface ThrustPoint { t: number; phi: number; thrust: number }
 interface AeonQuality { score: number; validated: boolean; max_rel_err: number; n_steps: number; peak_thrust: number }
@@ -28,6 +32,7 @@ interface SweepResult {
 interface RunRecord { ts: number; quality?: number; peak_thrust?: number; n_steps?: number; validated?: boolean }
 interface CIRepo { name: string; ok: boolean; passed: number; failed: number; errors: number; duration_s: number; error?: string }
 interface CIHealth { ok: boolean; repos: CIRepo[]; total_passed: number; total_failed: number; total_errors: number; score: number; duration_s: number; ts: number }
+interface FieldWeaveSlot { ok: boolean; score: number; golden_deg?: number; coh_score?: number; radial_score?: number; angle_fid?: number; ts: number }
 
 export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [summary,    setSummary]    = useState<AeonSummary | null>(null);
@@ -35,6 +40,7 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [runHistory, setRunHistory] = useState<RunRecord[]>([]);
   const [ciHealth,   setCiHealth]   = useState<CIHealth | null>(null);
   const [ciRunning,  setCiRunning]  = useState(false);
+  const [fieldWeave, setFieldWeave] = useState<FieldWeaveSlot | null>(null);
   const [err,        setErr]        = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [sweeping,   setSweeping]   = useState(false);
@@ -62,6 +68,8 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       if (s?.ok) setSweep(s);
       const ci = broker.slots?.["xova.ci_health"] as CIHealth | undefined;
       if (ci?.ok) setCiHealth(ci);
+      const fw = broker.slots?.["xova.field_weave"] as FieldWeaveSlot | undefined;
+      if (fw?.ok) setFieldWeave(fw);
     } catch { /**/ }
   }, []);
 
@@ -107,6 +115,17 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
   const xOf = (i: number) => PAD.l + (i / Math.max(n - 1, 1)) * IW;
   const yOf = (v: number) => PAD.t + (1 - (v - minT) / range) * IH;
   const lineD = series.map((p, i) => `${i === 0 ? "M" : "L"}${xOf(i).toFixed(1)},${yOf(p.thrust).toFixed(1)}`).join(" ");
+
+  const spiralPoints = useMemo(() => {
+    const cx = SPIRAL_SZ / 2, cy = SPIRAL_SZ / 2;
+    const rMax = Math.pow(PHI_SPIRAL, (SPIRAL_N - 1) / SPIRAL_N);
+    const scale = (SPIRAL_SZ / 2 - 8) / rMax;
+    return Array.from({ length: SPIRAL_N }, (_, i) => {
+      const r = Math.pow(PHI_SPIRAL, i / SPIRAL_N) * scale;
+      const theta = i * GOLDEN_ANGLE;
+      return { x: cx + r * Math.cos(theta), y: cy + r * Math.sin(theta), i };
+    });
+  }, []);
 
   const CONST_LABELS: [keyof AeonSummary["constants"], string][] = [
     ["PHI", "φ"], ["PSI_RESONANCE", "ψ"], ["GOLDEN_ANGLE_DEG", "∠°"], ["ALPHA_INV", "α⁻¹"],
@@ -186,6 +205,50 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
               </div>
             </div>
           )}
+
+          {/* φ-spiral — AEON phase trajectory visualized as Fibonacci golden-angle spiral */}
+          <div className="bg-zinc-900 rounded p-2">
+            <div className="text-[8px] text-zinc-600 uppercase tracking-wider mb-1.5 flex items-center gap-2">
+              <span>φ-spiral phase trajectory</span>
+              {fieldWeave && (
+                <span className="ml-auto font-mono" style={{ color: fieldWeave.score >= 0.8 ? "#34d399" : "#fbbf24" }}>
+                  {(fieldWeave.score * 100).toFixed(0)}%
+                </span>
+              )}
+            </div>
+            <div className="flex items-start gap-3">
+              <svg viewBox={`0 0 ${SPIRAL_SZ} ${SPIRAL_SZ}`} width={SPIRAL_SZ} height={SPIRAL_SZ} style={{ flexShrink: 0 }}>
+                <rect width={SPIRAL_SZ} height={SPIRAL_SZ} fill="#09090b" rx="4" />
+                {/* Spiral path */}
+                <path
+                  d={spiralPoints.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ")}
+                  fill="none" stroke="#6d28d9" strokeWidth="0.6" opacity="0.4"
+                />
+                {/* Dots — fade from dark violet to bright green as i increases */}
+                {spiralPoints.map(({ x, y, i }) => {
+                  const t = i / (SPIRAL_N - 1);
+                  const r = Math.round(109 + t * (52 - 109));
+                  const g = Math.round(40 + t * (211 - 40));
+                  const b = Math.round(217 + t * (153 - 217));
+                  return <circle key={i} cx={x.toFixed(2)} cy={y.toFixed(2)} r={i === SPIRAL_N - 1 ? "2.5" : "1.2"} fill={`rgb(${r},${g},${b})`} opacity={0.4 + t * 0.6} />;
+                })}
+                {/* Golden angle label */}
+                <text x="2" y={SPIRAL_SZ - 3} fontSize="5.5" fill="#52525b">∠{(fieldWeave?.golden_deg ?? 137.5078).toFixed(4)}°</text>
+              </svg>
+              <div className="flex flex-col gap-1 text-[8px]">
+                <div className="text-zinc-600">n={SPIRAL_N} steps</div>
+                <div className="text-zinc-600">φ={PHI_SPIRAL.toFixed(6)}</div>
+                <div className="text-zinc-600">∠={GOLDEN_ANGLE.toFixed(6)} rad</div>
+                {fieldWeave && (
+                  <>
+                    <div className="mt-1 text-zinc-600">coh <span className="text-emerald-400">{fieldWeave.coh_score?.toFixed(3) ?? "—"}</span></div>
+                    <div className="text-zinc-600">radial <span className="text-emerald-400">{fieldWeave.radial_score?.toFixed(3) ?? "—"}</span></div>
+                    <div className="text-zinc-600">∠fid <span className="text-emerald-400">{fieldWeave.angle_fid?.toFixed(3) ?? "—"}</span></div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
