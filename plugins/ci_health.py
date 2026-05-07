@@ -26,7 +26,7 @@ REPOS = [
     {
         "name":  "ziltrix-sch-core",
         "path":  r"D:\github\wizardaax\ziltrix-sch-core",
-        "flags": ["--tb=no", "-q"],
+        "flags": ["--tb=no", "tests/"],
     },
     {
         "name":  "recursive-field-math-pro",
