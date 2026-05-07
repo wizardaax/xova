@@ -70,9 +70,11 @@ import { LongTermMemory } from "./LongTermMemory";
 import { SelfEvalStore } from "./SelfEvalStore";
 import { EvolutionRuns } from "./EvolutionRuns";
 import { PhiUCBState } from "./PhiUCBState";
+import { SystemInfo } from "./SystemInfo";
+import { TrashStats } from "./TrashStats";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog" | "agentrostr" | "violations" | "swarmdispatch" | "ltmemory" | "selfevalstore" | "evoruns" | "phiucb";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog" | "agentrostr" | "violations" | "swarmdispatch" | "ltmemory" | "selfevalstore" | "evoruns" | "phiucb" | "sysinfo" | "trashstats";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -145,6 +147,8 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "selfevalstore",label: "Self-Eval",   emoji: "🧮" },
   { id: "evoruns",      label: "Evo Runs",    emoji: "🔬" },
   { id: "phiucb",       label: "φ-UCB",       emoji: "φ" },
+  { id: "sysinfo",      label: "System",      emoji: "🖥" },
+  { id: "trashstats",   label: "Trash",       emoji: "🗑" },
 ];
 
 interface WorkspaceDockProps {
@@ -279,7 +283,9 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "ltmemory"       && <LongTermMemory  onClose={() => onTab(null)} />}
             {activeTab === "selfevalstore"  && <SelfEvalStore   onClose={() => onTab(null)} />}
             {activeTab === "evoruns"        && <EvolutionRuns   onClose={() => onTab(null)} />}
-            {activeTab === "phiucb"         && <PhiUCBState     onClose={() => onTab(null)} />
+            {activeTab === "phiucb"         && <PhiUCBState     onClose={() => onTab(null)} />}
+            {activeTab === "sysinfo"        && <SystemInfo      onClose={() => onTab(null)} />}
+            {activeTab === "trashstats"     && <TrashStats      onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
