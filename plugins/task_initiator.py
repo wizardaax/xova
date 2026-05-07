@@ -212,10 +212,13 @@ def _check_low_eval(state: dict, active_goal_id: str | None) -> dict | None:
         state["low_eval_streak"] = {}
         return None
 
-    avg = sum(per_agent[fired_agent][-LOW_EVAL_STREAK:]) / LOW_EVAL_STREAK
+    recent_scores = per_agent[fired_agent][-LOW_EVAL_STREAK:]
+    avg = sum(recent_scores) / LOW_EVAL_STREAK
+    scores_str = ", ".join(f"{s:.3f}" for s in recent_scores)
     text = (
         f"[AUTO] low self-eval recovery for {fired_agent}: "
-        f"avg score {avg:.3f} over last {LOW_EVAL_STREAK} evals — "
+        f"scores [{scores_str}] avg={avg:.3f} (threshold {LOW_EVAL_THRESH}) "
+        f"over {LOW_EVAL_STREAK} consecutive evals — "
         f"review goal alignment and refocus agent output strategy"
     )
     return _create_task(text, "LOW_EVAL", 6, active_goal_id, state)
@@ -353,6 +356,7 @@ def action_scan() -> dict:
         pass
 
     created = []
+    skipped = []
     checks  = [
         ("LOW_EVAL",   _check_low_eval(state, active_goal_id)),
         ("VIOLATION",  _check_violations(state, active_goal_id)),
@@ -361,8 +365,16 @@ def action_scan() -> dict:
         ("ERROR",      _check_errors(state, active_goal_id)),
     ]
     for trigger, result in checks:
-        if result and result.get("ok"):
+        if result is None:
+            continue
+        if result.get("ok"):
             created.append({"trigger": trigger, "goal_id": result.get("id")})
+        else:
+            skipped.append({
+                "trigger": trigger,
+                "reason":  result.get("skipped", "unknown"),
+                "detail":  result.get("reason", ""),
+            })
 
     _save_state_direct(state)
     return {
@@ -371,6 +383,7 @@ def action_scan() -> dict:
         "active_goal":   active_goal_id,
         "tasks_created": len(created),
         "created":       created,
+        "skipped":       skipped,
         "tasks_today":   len(state["tasks_today"]),
     }
 

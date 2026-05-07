@@ -168,6 +168,19 @@ def _build_context() -> str:
     return "\n".join(lines) if lines else "Fleet state unavailable."
 
 
+# ── SCE-88 inline compliance check ───────────────────────────────────────────
+
+def _sce88_check_fleet() -> tuple[list[str], float]:
+    """Read current fleet coherence from swarm_dispatch and run SCE-88 REQ-01.
+    Returns (violations, coherence). Stdlib only — no subprocess."""
+    d = _read_json(DISPATCH_STORE)
+    coh = float(d.get("avg_coherence", 0.7)) if isinstance(d, dict) else 0.7
+    violations: list[str] = []
+    if not (0.0 <= coh <= 1.0):
+        violations.append(f"REQ-01 coherence out of [0,1]: {coh:.3f}")
+    return violations, coh
+
+
 # ── Ollama ────────────────────────────────────────────────────────────────────
 
 def _call_ollama(messages: list[dict]) -> str:
@@ -266,6 +279,20 @@ def action_consult(proposal: str) -> dict:
     if not proposal.strip():
         return {"ok": False, "approved": True, "reason": "empty proposal — auto-approved"}
 
+    # SCE-88 compliance check — inline, no subprocess
+    sce88_violations, fleet_coh = _sce88_check_fleet()
+    if fleet_coh < 0.2:
+        # Coherence so degraded that AGI autonomy is unsafe — hard veto
+        reason = f"SCE-88 auto-veto: fleet coherence={fleet_coh:.3f} < 0.2 — fleet unstable, no autonomous actions"
+        _append_outbox(f"[sce88-hard-veto] {proposal[:80]}", "consult")
+        return {"ok": True, "approved": False, "reason": reason, "sce88_coherence": fleet_coh}
+
+    sce88_ctx = f"\nSCE-88: coherence={fleet_coh:.3f}"
+    if sce88_violations:
+        sce88_ctx += f" VIOLATIONS: {'; '.join(sce88_violations)}"
+    else:
+        sce88_ctx += " PASS"
+
     ctx = _build_context()
     messages = [
         {"role": "system", "content": (
@@ -278,7 +305,7 @@ def action_consult(proposal: str) -> dict:
             "No other text."
         )},
         {"role": "user", "content": (
-            f"Fleet state:\n{ctx}\n\n"
+            f"Fleet state:\n{ctx}{sce88_ctx}\n\n"
             f"Proposed action: {proposal[:300]}\n\n"
             "Approve or veto?"
         )},
@@ -313,7 +340,14 @@ def action_consult(proposal: str) -> dict:
         f"[consult] {'APPROVED' if approved else 'VETOED'}: {proposal[:80]} → {reason}",
         "consult",
     )
-    return {"ok": True, "approved": approved, "reason": reason, "raw": first_line[:120]}
+    return {
+        "ok":             True,
+        "approved":       approved,
+        "reason":         reason,
+        "raw":            first_line[:120],
+        "sce88_coherence": fleet_coh,
+        "sce88_pass":     len(sce88_violations) == 0,
+    }
 
 
 def action_clear() -> dict:
