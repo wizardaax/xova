@@ -42,14 +42,15 @@ interface Proposal {
 interface UcbEntry { q: number; n: number; }
 interface DomainSlot { ok?: boolean; score?: number; ts?: number; sweep?: Array<{ quality?: number }>; optimal?: { quality?: number } }
 interface UcbReward {
-  cycle:        number;
-  goal_idx:     number;
-  goal:         string;
-  coh_reward:   number;
-  eval_score:   number;
+  cycle:         number;
+  goal_idx:      number;
+  goal:          string;
+  coh_reward:    number;
+  eval_score:    number;
   aeon_quality?: number | null;
-  blended:      number;
-  ts:           number;
+  domain_score?: number | null;
+  blended:       number;
+  ts:            number;
 }
 
 async function xovaRun(cmd: string): Promise<string> {
@@ -274,6 +275,9 @@ export function GoalState({ onClose }: { onClose: () => void }) {
             <span className="text-zinc-500">eval <span className="text-zinc-300">{ucbReward.eval_score.toFixed(3)}</span></span>
             {ucbReward.aeon_quality != null && (
               <span className="text-amber-500">aeon <span className="text-amber-300">{ucbReward.aeon_quality.toFixed(3)}</span></span>
+            )}
+            {ucbReward.domain_score != null && ucbReward.goal_idx !== 0 && (
+              <span className="text-teal-500">{ROTATING_GOAL_NAMES[ucbReward.goal_idx] ?? "domain"} <span className="text-teal-300">{ucbReward.domain_score.toFixed(3)}</span></span>
             )}
             <span className="text-violet-400 font-mono">blend {ucbReward.blended.toFixed(3)}</span>
             <span className="text-zinc-600 truncate max-w-[160px]">{ucbReward.goal}</span>

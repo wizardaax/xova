@@ -1383,30 +1383,19 @@ def main() -> None:
                 # blend aeon quality directly into reward so the UCB selector
                 # learns to favour cycles with high AEON output quality.
                 # Sprint 7: same for goal_idx==3 (Lucas phase) — blend lucas score.
-                if goal_idx == 0 and _last_aeon_quality is not None:
+                # Lookup domain score for this goal_idx (used in reward + record)
+                _domain_score_for_ucb: float | None = {
+                    0: _last_aeon_quality,
+                    2: _last_repo_sync_score,
+                    3: _last_lucas_score,
+                    4: _last_corpus_score,
+                    5: _last_ternary_score,
+                    6: _last_weave_score,
+                }.get(goal_idx)
+                if _domain_score_for_ucb is not None:
                     reward = (0.45 * _coh_reward
                               + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
-                              + 0.25 * _last_aeon_quality)
-                elif goal_idx == 3 and _last_lucas_score is not None:
-                    reward = (0.45 * _coh_reward
-                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
-                              + 0.25 * _last_lucas_score)
-                elif goal_idx == 2 and _last_repo_sync_score is not None:
-                    reward = (0.45 * _coh_reward
-                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
-                              + 0.25 * _last_repo_sync_score)
-                elif goal_idx == 4 and _last_corpus_score is not None:
-                    reward = (0.45 * _coh_reward
-                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
-                              + 0.25 * _last_corpus_score)
-                elif goal_idx == 5 and _last_ternary_score is not None:
-                    reward = (0.45 * _coh_reward
-                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
-                              + 0.25 * _last_ternary_score)
-                elif goal_idx == 6 and _last_weave_score is not None:
-                    reward = (0.45 * _coh_reward
-                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
-                              + 0.25 * _last_weave_score)
+                              + 0.25 * _domain_score_for_ucb)
                 elif _eval_score_for_ucb > 0.0:
                     reward = 0.6 * _coh_reward + 0.4 * _eval_score_for_ucb
                 else:
@@ -1421,6 +1410,7 @@ def main() -> None:
                     "coh_reward":   round(_coh_reward, 4),
                     "eval_score":   round(_eval_score_for_ucb, 4),
                     "aeon_quality": round(_last_aeon_quality, 4) if _last_aeon_quality is not None else None,
+                    "domain_score": round(_domain_score_for_ucb, 4) if _domain_score_for_ucb is not None else None,
                     "blended":      round(reward, 4),
                     "ts":           time.time(),
                 })
