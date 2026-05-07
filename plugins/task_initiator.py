@@ -226,15 +226,32 @@ def _check_low_eval(state: dict, active_goal_id: str | None) -> dict | None:
 
 
 def _check_violations(state: dict, active_goal_id: str | None) -> dict | None:
-    """Trigger if sentinel violations log grew since last scan."""
+    """Trigger if sentinel violations log grew since last scan.
+
+    Entries whose 'key' starts with 'test.' are ignored — they are deliberate
+    test injections to exercise the SCE-88 gate, not production breaches.
+    """
     if not _can_fire("VIOLATION", state):
         return None
+
+    prod_entries: list[dict] = []
     try:
-        with open(VIOLATIONS_LOG, encoding="utf-8") as fh:
-            count = sum(1 for _ in fh)
+        with open(VIOLATIONS_LOG, encoding="utf-8", errors="replace") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except Exception:
+                    continue
+                if str(entry.get("key", "")).startswith("test."):
+                    continue
+                prod_entries.append(entry)
     except Exception:
         return None
 
+    count = len(prod_entries)
     prev = state.get("last_violation_count", 0)
     state["last_violation_count"] = count
     new_violations = count - prev
@@ -242,12 +259,10 @@ def _check_violations(state: dict, active_goal_id: str | None) -> dict | None:
     if new_violations <= 0:
         return None
 
-    # Read last violation for context
+    # Use last production violation for context
     context = ""
     try:
-        with open(VIOLATIONS_LOG, encoding="utf-8") as fh:
-            lines = fh.readlines()
-        last = json.loads(lines[-1])
+        last = prod_entries[-1]
         context = f"{last.get('source','?')}: {'; '.join(last.get('violations',[])[:2])}"
     except Exception:
         pass
