@@ -319,6 +319,11 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     : [];
   displayed.sort((a, b) => b.priority - a.priority || b.updated_at - a.updated_at);
 
+  const statusCounts = goals.reduce((acc, g) => {
+    acc[g.status] = (acc[g.status] ?? 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
   return (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-300 font-mono text-[11px]">
 
@@ -350,6 +355,29 @@ export function GoalState({ onClose }: { onClose: () => void }) {
         <button onClick={refresh} disabled={loading} className="text-zinc-600 hover:text-zinc-300 disabled:opacity-40">↻</button>
         <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">✕</button>
       </div>
+
+      {/* Goal stats bar */}
+      {goals.length > 0 && (
+        <div className="flex items-center gap-3 px-3 py-1 border-b border-zinc-800/60 shrink-0 text-[8px]">
+          {[
+            { key: "active",    color: "#34d399" },
+            { key: "paused",    color: "#fbbf24" },
+            { key: "completed", color: "#60a5fa" },
+            { key: "failed",    color: "#f87171" },
+          ].map(({ key, color }) => {
+            const n = statusCounts[key] ?? 0;
+            if (n === 0) return null;
+            return (
+              <span key={key} className="flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
+                <span style={{ color }}>{n}</span>
+                <span className="text-zinc-600">{key}</span>
+              </span>
+            );
+          })}
+          <span className="text-zinc-700 ml-auto">{goals.length} total</span>
+        </div>
+      )}
 
       {/* Active goal hero */}
       {active && (
