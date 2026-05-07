@@ -352,7 +352,29 @@ Selftest: keygen ~5.5s, 256-byte ciphertext, sign/verify all pass.
 
 ### Pending for next Forge
 - AUDIT-2-023: watchdog auto-reload (requires watchdog to restart itself on mtime change — needs Adam's approval for process termination)
-- Round 107: cross-AI fact federation (Xova standing_facts.json <-> Jarvis memory_nodes)
-- New AEON-direction sub-goals added to master goal (goal-cac0c1f1)
+- src-tauri rebuild approval (cancel_ollama_stream + single-instance) — unstaged changes waiting
 
 — Forge (self-eval fix + RSA-2048, 2026-05-07)
+
+---
+
+## 2026-05-07 — Session 2 (continuation after compression)
+
+### Round 107: cross-AI fact federation (commit f6c21f5)
+`C:\Xova\plugins\fact_federation.py` — reads Jarvis SQLite (memory_nodes + conversation_summaries, read-only URI) and Xova xova_standing_facts.json, writes shared_facts.json both systems can read. Initial sync: 13 Jarvis nodes + 5 summaries + 11 Xova standing facts. Wired into mesh_runner every 60 cycles (~1 hr).
+
+### AEON Sprint 1 — ZiltrixAdapter live dispatch (commit b4127e5 in Snell-Vern)
+`ZiltrixAdapter.dispatch("aeon", payload)` now calls `aeon_engine.aeon_summary()` from ziltrix-sch-core, returning real thrust series + PhaseII validation. Previously the only live AEON path was FieldWeaverAgent direct import; now FederationMesh routes "aeon" task_type through ZiltrixAdapter with full observability. 10 new tests. 387 pass total.
+- Thrust: -7.663e-08 N, validated ✓ max_rel_err 0.96%
+- fact federation (goal-e93a32ee) completed
+- AEON Sprint 1 (goal-3a9737f6) completed
+
+### Round 108: RSA-2048 corpus signing (commit 1163be7)
+`C:\Xova\plugins\corpus_signer.py` — 123 manually-added corpus entries (no root field) signed with RSA-2048 PKCS#1-v1.5 SHA-256. Key fingerprint: 1149223a364a0ae7. All 123/123 verified PASS. Wired into mesh_runner every 120 cycles (~2 hr). 100-year design: key stored as JSON hex, no ASN.1 DER, future reader can re-verify with stdlib alone.
+- goal-fae8fed3 completed
+
+### Active goals after this session
+- goal-cac0c1f1: "Build persistent cognitive loop" (master, active)
+- All sub-goals: completed (persistent goal state, agent-initiated tasks, self-eval loop, fact federation, AEON Sprint 1, corpus signing)
+
+— Forge (AEON Sprint 1 + Round 107/108, 2026-05-07)
