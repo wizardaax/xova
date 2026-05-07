@@ -726,8 +726,12 @@ def _read_live_agent_metrics() -> dict:
         strat    = strategies.get(name, {})
         score    = float(strat.get("score", 0.75)) if isinstance(strat, dict) else 0.75
         alive    = info.get("alive", False)
+        # latency_ms left at 0 — we don't measure inter-agent routing latency;
+        # age_s*1000 incorrectly flagged every agent as high-latency (threshold 100ms)
+        # because heartbeat intervals are in seconds, not sub-100ms.
+        # Staleness is captured by error_rate and memory_decay instead.
         metrics[name] = {
-            "latency_ms":           min(age_s * 1000, 60000),
+            "latency_ms":           0.0,
             "error_rate":           0.0 if alive else 0.5,
             "test_coverage":        score,
             "constraint_violations":0,
