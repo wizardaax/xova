@@ -5,6 +5,7 @@ const GOAL_STORE      = "C:\\Xova\\memory\\goal_store.json";
 const PROPOSAL_STORE  = "C:\\Xova\\memory\\goal_proposals.json";
 const UCB_STORE       = "C:\\Xova\\memory\\phi_ucb_state.json";
 const BROKER_PATH     = "C:\\Xova\\memory\\context_broker.json";
+const LTM_PATH        = "C:\\Xova\\memory\\long_term_memory.json";
 const GOAL_MGR        = `python "C:\\Xova\\plugins\\goal_manager.py"`;
 const GOAL_PROPOSER   = `python "C:\\Xova\\plugins\\goal_proposer.py"`;
 
@@ -40,6 +41,16 @@ interface Proposal {
   goal_id?:  string;
 }
 interface UcbEntry { q: number; n: number; }
+interface LtmData {
+  last_consolidation?:   number;
+  period_hours?:         number;
+  avg_coherence?:        number;
+  avg_eval_score?:       number;
+  top_missed_keywords?:  string[];
+  evolution_health?:     number;
+  cycle_count?:          number;
+  insights?:             string[];
+}
 interface DomainSlot { ok?: boolean; score?: number; ts?: number; sweep?: Array<{ quality?: number }>; optimal?: { quality?: number } }
 interface UcbReward {
   cycle:         number;
@@ -84,12 +95,13 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [ucbState,    setUcbState]    = useState<UcbEntry[]>([]);
   const [ucbReward,   setUcbReward]   = useState<UcbReward | null>(null);
   const [domainScores, setDomainScores] = useState<(number | null)[]>([]);
+  const [ltmData,      setLtmData]      = useState<LtmData | null>(null);
   const [loading,     setLoading]     = useState(true);
   const [proposing,   setProposing]   = useState(false);
   const [newGoal,     setNewGoal]     = useState("");
   const [saving,      setSaving]      = useState(false);
   const [updatedAt,   setUpdatedAt]   = useState("");
-  const [view,        setView]        = useState<"active" | "all" | "proposals">("active");
+  const [view,        setView]        = useState<"active" | "all" | "proposals" | "dream">("active");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -133,6 +145,11 @@ export function GoalState({ onClose }: { onClose: () => void }) {
       });
       setDomainScores(dScores);
     } catch { /* broker may not have slots yet */ }
+    // Load long-term memory (dream consolidator output)
+    try {
+      const ltmRaw = await invoke<string>("xova_read_file", { path: LTM_PATH });
+      setLtmData(JSON.parse(ltmRaw) as LtmData);
+    } catch { /* ltm may not exist yet */ }
     setLoading(false);
   }, []);
 
@@ -218,7 +235,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
           Goals{updatedAt ? ` · ${updatedAt}` : ""}
         </span>
         <div className="flex gap-1 ml-auto">
-          {(["active", "all", "proposals"] as const).map(v => (
+          {(["active", "all", "proposals", "dream"] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={`px-2 py-0.5 rounded border text-[9px] transition-colors ${
                 view === v ? "border-emerald-600 text-emerald-300 bg-emerald-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"
@@ -285,8 +302,8 @@ export function GoalState({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      {/* UCB goal weights + domain scores — shown when ucbState loaded */}
-      {ucbState.length > 0 && (view === "active" || view === "all") && (
+      {/* UCB goal weights + domain scores — shown on active/all/dream views */}
+      {ucbState.length > 0 && (view === "active" || view === "all" || view === "dream") && (
         <div className="px-3 py-1.5 border-b border-zinc-800 shrink-0">
           <div className="text-[8px] uppercase tracking-wider text-zinc-600 mb-1">φ-ucb · domain scores</div>
           <div className="flex flex-col gap-0.5">
@@ -358,8 +375,78 @@ export function GoalState({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {/* Dream consolidator insights panel */}
+      {view === "dream" && (
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {!ltmData ? (
+            <div className="text-zinc-600 text-[10px] text-center py-8">dream consolidator not yet run</div>
+          ) : (
+            <>
+              {/* Cycle health grid */}
+              <div className="grid grid-cols-3 gap-1">
+                <div className="bg-zinc-900 rounded p-1.5 text-center">
+                  <div className="text-[8px] text-zinc-500 mb-0.5">avg coherence</div>
+                  <div className="font-bold text-[11px]" style={{ color: cohColor(ltmData.avg_coherence ?? 0) }}>
+                    {ltmData.avg_coherence?.toFixed(3) ?? "—"}
+                  </div>
+                </div>
+                <div className="bg-zinc-900 rounded p-1.5 text-center">
+                  <div className="text-[8px] text-zinc-500 mb-0.5">avg eval score</div>
+                  <div className="font-bold text-[11px]" style={{ color: cohColor(ltmData.avg_eval_score ?? 0) }}>
+                    {ltmData.avg_eval_score?.toFixed(3) ?? "—"}
+                  </div>
+                </div>
+                <div className="bg-zinc-900 rounded p-1.5 text-center">
+                  <div className="text-[8px] text-zinc-500 mb-0.5">cycles</div>
+                  <div className="text-zinc-200 font-bold text-[11px]">{ltmData.cycle_count ?? "—"}</div>
+                </div>
+              </div>
+              {/* Evolution health */}
+              {ltmData.evolution_health !== undefined && (
+                <div className="bg-zinc-900 rounded p-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[8px] text-zinc-500 uppercase tracking-wider">evolution health</span>
+                    <span className="text-[9px] font-mono" style={{ color: cohColor(ltmData.evolution_health) }}>
+                      {(ltmData.evolution_health * 100).toFixed(1)}%
+                    </span>
+                  </div>
+                  <div className="relative h-1.5 w-full bg-zinc-800 rounded-full overflow-hidden">
+                    <div className="absolute inset-y-0 left-0 rounded-full"
+                      style={{ width: `${ltmData.evolution_health * 100}%`, backgroundColor: cohColor(ltmData.evolution_health) }} />
+                  </div>
+                </div>
+              )}
+              {/* Top missed keywords */}
+              {(ltmData.top_missed_keywords?.length ?? 0) > 0 && (
+                <div className="bg-zinc-900 rounded p-2">
+                  <div className="text-[8px] text-zinc-500 uppercase tracking-wider mb-1.5">top missed keywords</div>
+                  <div className="flex flex-wrap gap-1">
+                    {ltmData.top_missed_keywords!.map(kw => (
+                      <span key={kw} className="px-1.5 py-0.5 rounded border border-amber-800 text-amber-400 text-[8px]">{kw}</span>
+                    ))}
+                  </div>
+                  <div className="text-zinc-600 text-[7px] mt-1.5">goal text tokens missing from cycle_summary — cycle enrichment can close these gaps</div>
+                </div>
+              )}
+              {/* Insights */}
+              {(ltmData.insights?.length ?? 0) > 0 && (
+                <div className="space-y-1">
+                  <div className="text-[8px] text-zinc-500 uppercase tracking-wider">dream insights</div>
+                  {ltmData.insights!.map((ins, i) => (
+                    <div key={i} className="bg-zinc-900/60 border border-zinc-800/60 rounded px-2 py-1.5 text-[9px] text-zinc-400">{ins}</div>
+                  ))}
+                </div>
+              )}
+              {ltmData.last_consolidation && (
+                <div className="text-zinc-700 text-[7px]">last consolidation: {fmtDate(ltmData.last_consolidation)} {fmtTs(ltmData.last_consolidation)}</div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
       {/* Goal list */}
-      {view !== "proposals" && (
+      {view !== "proposals" && view !== "dream" && (
       <div className="flex-1 overflow-y-auto">
         {displayed.map(goal => {
           const isActive = goal.id === store.active_goal;
