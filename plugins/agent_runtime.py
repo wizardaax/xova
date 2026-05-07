@@ -1,0 +1,359 @@
+"""
+agent_runtime.py — Continuous work loop for any xova-agent.
+
+Each agent runs this on a 60s cycle. Every cycle:
+  1. Read own inbox (forge_hook_inbox.jsonl messages addressed to this agent)
+  2. Check SCE-88 gate against current broker state
+  3. Ask Ollama: given my domain + current signals, what should I do?
+  4. Execute the tool calls Ollama returns (broker_read, broker_write, report,
+     trace, inbox_write, sce88_check)
+  5. Write result to action_trace and report to Xova
+
+This is the continuous agent tool-use loop — these plugins should be firing
+constantly, not sitting idle.
+
+Usage:
+  python agent_runtime.py --agent coherence
+  python agent_runtime.py --agent sentinel --interval 30
+  python agent_runtime.py --agent forge --run-once
+
+Agents: forge, jarvis, mesh, browser, corpus, evolution, sentinel,
+        phase, field, memory, repo, voice, coherence
+"""
+from __future__ import annotations
+
+import argparse
+import http.client
+import json
+import os
+import subprocess
+import sys
+import time
+
+# ── paths ─────────────────────────────────────────────────────────────────────
+PLUGINS          = r"C:\Xova\plugins"
+BROKER_JSON      = r"C:\Xova\memory\context_broker.json"
+HOOK_INBOX       = r"C:\Xova\memory\forge_hook_inbox.jsonl"
+INBOX_CURSOR     = r"C:\Xova\memory\agent_runtime_cursors.json"
+
+OLLAMA_HOST      = "localhost"
+OLLAMA_PORT      = 11434
+OLLAMA_MODEL     = "llama3.2:3b"
+OLLAMA_TIMEOUT   = 60
+NO_WIN           = 0x08000000
+DEFAULT_INTERVAL = 60
+
+# ── domain context per agent — what slots + signals each agent cares about ────
+AGENT_DOMAIN = {
+    "forge":     {"slots": ["forge.current_task", "agents.last_cycles"], "desc": "task planning and code generation for the Xova fleet"},
+    "jarvis":    {"slots": ["xova.session", "federation.heartbeat"],      "desc": "voice UI, TTS/STT pipeline, user interaction"},
+    "mesh":      {"slots": ["agents.last_cycles", "mesh.last_sweep"],     "desc": "cognitive cycle routing, Phi-UCB goal selection, Snell-Vern mesh"},
+    "browser":   {"slots": ["xova.corpus_recall"],                        "desc": "web control, DOM navigation, page text extraction"},
+    "corpus":    {"slots": ["xova.corpus_recall", "agents.knowledge_gap"],"desc": "knowledge index, semantic search, corpus coverage"},
+    "evolution": {"slots": ["agents.last_cycles", "xova.ci_health"],      "desc": "self-improvement proposals, EvolutionEngine pipeline"},
+    "sentinel":  {"slots": ["test.sce88_guard", "agents.violation_rate"], "desc": "SCE-88 constraint enforcement, security, CI health watchdog"},
+    "phase":     {"slots": ["xova.lucas_phase", "agents.phase_drift"],    "desc": "Lucas-Fibonacci phase tracking, Riemann zeros, phi analysis"},
+    "field":     {"slots": ["xova.field_weave", "agents.field_drift"],    "desc": "field weaver, ternary logic, golden spiral coherence"},
+    "memory":    {"slots": ["agents.slot_health", "memory.last_sweep"],   "desc": "context broker health, slot TTL management, action trace"},
+    "repo":      {"slots": ["xova.ci_health", "agents.repo_divergence"],  "desc": "repo sync, git ops, CI health across all 13 wizardaax repos"},
+    "voice":     {"slots": ["xova.session"],                              "desc": "speaker recognition, Whisper STT, voice model enrollment"},
+    "coherence": {"slots": ["agents.coherence_ma", "agents.coherence_trend", "agents.last_cycles"], "desc": "RFF coherence score, phi-weighted MA, fleet coherence health"},
+}
+
+
+# ── tool definitions shown to Ollama ─────────────────────────────────────────
+TOOLS_PROMPT = """You have these tools. Respond with a JSON array of tool calls.
+
+Tools:
+  sce88_check   {}                         — run SCE-88 gate on current broker state
+  broker_read   {"key": "slot.name"}       — read a context_broker slot
+  broker_write  {"key": "k", "value": {}}  — write a result to context_broker
+  report        {"text": "..."}            — report to Xova chat inbox
+  trace         {"action": "run|write|read|sweep", "summary": "..."}  — log to action_trace
+  inbox_write   {"content": "...", "priority": "normal|high"}  — send message to Forge
+  done          {"summary": "..."}         — finish this cycle
+
+Rules:
+- Always call sce88_check first
+- Always call trace at the end with what you did
+- Call report if you found something significant (not every cycle)
+- Call done last
+- Max 8 tool calls per cycle
+- Respond ONLY with a JSON array, no prose
+"""
+
+
+# ── broker helpers ─────────────────────────────────────────────────────────────
+def _read_broker() -> dict:
+    try:
+        with open(BROKER_JSON, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _slot_val(broker: dict, key: str):
+    raw = broker.get("slots", {}).get(key)
+    if raw is None:
+        return None
+    if isinstance(raw, dict) and "value" in raw:
+        return raw["value"]
+    return raw
+
+
+# ── inbox cursor ──────────────────────────────────────────────────────────────
+def _read_cursors() -> dict:
+    try:
+        with open(INBOX_CURSOR, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _write_cursors(c: dict) -> None:
+    try:
+        with open(INBOX_CURSOR, "w", encoding="utf-8") as f:
+            json.dump(c, f)
+    except Exception:
+        pass
+
+
+def _drain_my_inbox(agent: str) -> list[str]:
+    """Read new forge_hook_inbox entries addressed to this agent."""
+    cursors = _read_cursors()
+    cursor  = cursors.get(agent, 0)
+    tasks: list[str] = []
+    new_cursor = cursor
+    try:
+        with open(HOOK_INBOX, "rb") as fh:
+            fh.seek(cursor)
+            while True:
+                line = fh.readline()
+                if not line:
+                    break
+                new_cursor = fh.tell()
+                try:
+                    msg = json.loads(line)
+                    if msg.get("from", "") == f"agent-{_agent_num(agent):02d}-{agent}":
+                        tasks.append(msg.get("content", ""))
+                except Exception:
+                    pass
+    except FileNotFoundError:
+        pass
+    cursors[agent] = new_cursor
+    _write_cursors(cursors)
+    return tasks
+
+
+def _agent_num(agent: str) -> int:
+    nums = {"forge":1,"jarvis":2,"mesh":3,"browser":4,"corpus":5,
+            "evolution":6,"sentinel":7,"phase":8,"field":9,
+            "memory":10,"repo":11,"voice":12,"coherence":13}
+    return nums.get(agent, 0)
+
+
+# ── plugin callers ─────────────────────────────────────────────────────────────
+def _run_plugin(plugin: str, *args) -> dict:
+    path = os.path.join(PLUGINS, plugin)
+    try:
+        r = subprocess.run(
+            [sys.executable, path] + list(args),
+            capture_output=True, text=True, timeout=15,
+            creationflags=NO_WIN, encoding="utf-8",
+        )
+        out = r.stdout.strip()
+        return json.loads(out) if out else {"ok": r.returncode == 0}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def _tool_sce88_check(broker: dict) -> dict:
+    slots  = broker.get("slots", {})
+    last   = _slot_val(broker, "agents.last_cycles") or {}
+    coh    = last.get("avg_coherence", 0.6) if isinstance(last, dict) else 0.6
+    tern   = last.get("ternary", [0.33, 0.34, 0.33]) if isinstance(last, dict) else [0.33, 0.34, 0.33]
+    if not isinstance(tern, list) or len(tern) < 3:
+        tern = [0.33, 0.34, 0.33]
+    return _run_plugin("sce88_gate.py",
+                       "--coherence", str(round(float(coh), 4)),
+                       "--uncertainty", "0.3",
+                       "--t0", str(round(float(tern[0]), 4)),
+                       "--t1", str(round(float(tern[1]), 4)),
+                       "--t2", str(round(float(tern[2]), 4)))
+
+
+def _tool_broker_read(key: str) -> dict:
+    return _run_plugin("context_broker.py", "--action", "get", "--key", key)
+
+
+def _tool_broker_write(agent: str, key: str, value: object) -> dict:
+    return _run_plugin("context_broker.py",
+                       "--action", "set", "--key", key,
+                       "--value", json.dumps(value, ensure_ascii=False),
+                       "--agent", agent, "--ttl", "0", "--tags", agent)
+
+
+def _tool_report(text: str) -> dict:
+    return _run_plugin("forge_report.py", "--text", text[:300], "--from", "agent_runtime")
+
+
+def _tool_trace(action: str, plugin: str, summary: str) -> dict:
+    return _run_plugin("action_trace_write.py",
+                       "--action", action, "--plugin", plugin,
+                       "--summary", summary[:200])
+
+
+def _tool_inbox_write(agent: str, content: str, priority: str = "normal") -> dict:
+    return _run_plugin("forge_inbox_write.py",
+                       "--from", f"agent-{_agent_num(agent):02d}-{agent}",
+                       "--content", content[:300],
+                       "--priority", priority)
+
+
+# ── ollama call ────────────────────────────────────────────────────────────────
+def _ollama(prompt: str) -> str:
+    payload = json.dumps({
+        "model": OLLAMA_MODEL,
+        "prompt": prompt,
+        "stream": False,
+    }).encode()
+    try:
+        conn = http.client.HTTPConnection(OLLAMA_HOST, OLLAMA_PORT, timeout=OLLAMA_TIMEOUT)
+        conn.request("POST", "/api/generate",
+                     body=payload, headers={"Content-Type": "application/json"})
+        resp = conn.getresponse()
+        data = json.loads(resp.read().decode())
+        return data.get("response", "").strip()
+    except Exception as exc:
+        return f"[ollama error: {exc}]"
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+
+# ── single agent cycle ─────────────────────────────────────────────────────────
+def run_cycle(agent: str) -> dict:
+    domain   = AGENT_DOMAIN.get(agent, {"slots": [], "desc": agent})
+    broker   = _read_broker()
+    inbox    = _drain_my_inbox(agent)
+
+    # Gather domain slot values for context
+    slot_ctx = {}
+    for key in domain["slots"]:
+        v = _slot_val(broker, key)
+        if v is not None:
+            slot_ctx[key] = v
+
+    inbox_ctx = f"\nPending tasks from inbox: {inbox}" if inbox else ""
+
+    prompt = (
+        f"You are the {agent} agent. Specialty: {domain['desc']}.\n"
+        f"Current context broker signals: {json.dumps(slot_ctx, ensure_ascii=False)}"
+        f"{inbox_ctx}\n\n"
+        f"{TOOLS_PROMPT}\n"
+        f"What tool calls should you make this cycle to do your job?"
+    )
+
+    raw = _ollama(prompt)
+
+    # Parse tool calls from response
+    tool_calls: list[dict] = []
+    try:
+        # Find JSON array in response
+        start = raw.find("[")
+        end   = raw.rfind("]") + 1
+        if start >= 0 and end > start:
+            tool_calls = json.loads(raw[start:end])
+    except Exception:
+        pass
+
+    if not tool_calls:
+        # Fallback: minimal cycle — just sce88 + trace
+        tool_calls = [
+            {"tool": "sce88_check"},
+            {"tool": "trace", "action": "run", "summary": f"{agent} cycle: no tasks, nominal"},
+            {"tool": "done",  "summary": "nominal cycle"},
+        ]
+
+    results: list[dict] = []
+    done_summary = ""
+
+    for call in tool_calls[:8]:
+        tool = call.get("tool", "")
+
+        if tool == "sce88_check":
+            r = _tool_sce88_check(broker)
+            results.append({"tool": tool, "result": r})
+
+        elif tool == "broker_read":
+            r = _tool_broker_read(call.get("key", ""))
+            results.append({"tool": tool, "key": call.get("key"), "result": r})
+
+        elif tool == "broker_write":
+            r = _tool_broker_write(agent, call.get("key", f"{agent}.last_run"),
+                                   call.get("value", {}))
+            results.append({"tool": tool, "key": call.get("key"), "result": r})
+
+        elif tool == "report":
+            r = _tool_report(call.get("text", ""))
+            results.append({"tool": tool, "result": r})
+
+        elif tool == "trace":
+            r = _tool_trace(call.get("action", "run"), agent,
+                            call.get("summary", f"{agent} cycle"))
+            results.append({"tool": tool, "result": r})
+
+        elif tool == "inbox_write":
+            r = _tool_inbox_write(agent, call.get("content", ""),
+                                  call.get("priority", "normal"))
+            results.append({"tool": tool, "result": r})
+
+        elif tool == "done":
+            done_summary = call.get("summary", "")
+            results.append({"tool": tool, "summary": done_summary})
+            break
+
+    # Always trace the cycle completion
+    _tool_trace("run", f"agent_runtime.{agent}",
+                f"{agent} cycle complete: {done_summary[:120] or 'ok'}")
+
+    return {
+        "ok":      True,
+        "agent":   agent,
+        "ts":      time.time(),
+        "tools_called": len(results),
+        "inbox_tasks":  len(inbox),
+        "summary": done_summary or f"{agent} cycle ok",
+    }
+
+
+# ── main ───────────────────────────────────────────────────────────────────────
+def main() -> None:
+    ap = argparse.ArgumentParser(description="Continuous agent work loop")
+    ap.add_argument("--agent",    required=True, choices=list(AGENT_DOMAIN.keys()))
+    ap.add_argument("--interval", type=int, default=DEFAULT_INTERVAL)
+    ap.add_argument("--run-once", action="store_true")
+    args = ap.parse_args()
+
+    sys.stdout.reconfigure(encoding="utf-8")
+
+    if args.run_once:
+        result = run_cycle(args.agent)
+        print(json.dumps(result, ensure_ascii=False, indent=2))
+        return
+
+    print(f"[agent_runtime] {args.agent} started, interval={args.interval}s")
+    while True:
+        try:
+            result = run_cycle(args.agent)
+            print(f"[agent_runtime] {args.agent}: {result['summary'][:80]} "
+                  f"(tools={result['tools_called']} inbox={result['inbox_tasks']})")
+        except Exception as exc:
+            print(f"[agent_runtime] {args.agent} error: {exc}", file=sys.stderr)
+        time.sleep(args.interval)
+
+
+if __name__ == "__main__":
+    main()
