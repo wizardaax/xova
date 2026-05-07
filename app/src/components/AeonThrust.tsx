@@ -1,16 +1,23 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-const CMD_SUMMARY  = `python "C:\\Xova\\plugins\\aeon_summary.py"`;
-const CMD_SWEEP    = `python "C:\\Xova\\plugins\\aeon_sweep.py"`;
-const CMD_CI       = `python "C:\\Xova\\plugins\\ci_health.py" --action run`;
-const CMD_WEAVE    = `python "C:\\Xova\\plugins\\field_weave.py" --action run`;
-const CMD_TERNARY  = `python "C:\\Xova\\plugins\\ternary_eval.py" --action run`;
-const CMD_LUCAS    = `python "C:\\Xova\\plugins\\lucas_phase.py" --action run`;
-const CMD_CORPUS   = `python "C:\\Xova\\plugins\\corpus_recall.py" --action run`;
-const CMD_SCAN_ALL = `python "C:\\Xova\\plugins\\domain_scan.py"`;
-const RUN_LOG_PATH = "C:\\Xova\\memory\\aeon_run_log.jsonl";
-const BROKER_PATH  = "C:\\Xova\\memory\\context_broker.json";
+const CMD_SUMMARY    = `python "C:\\Xova\\plugins\\aeon_summary.py"`;
+const CMD_SWEEP      = `python "C:\\Xova\\plugins\\aeon_sweep.py"`;
+const CMD_CI         = `python "C:\\Xova\\plugins\\ci_health.py" --action run`;
+const CMD_WEAVE      = `python "C:\\Xova\\plugins\\field_weave.py" --action run`;
+const CMD_TERNARY    = `python "C:\\Xova\\plugins\\ternary_eval.py" --action run`;
+const CMD_LUCAS      = `python "C:\\Xova\\plugins\\lucas_phase.py" --action run`;
+const CMD_CORPUS     = `python "C:\\Xova\\plugins\\corpus_recall.py" --action run`;
+const CMD_SCAN_ALL   = `python "C:\\Xova\\plugins\\domain_scan.py"`;
+const CMD_SWARM_STAT = `python "C:\\Xova\\plugins\\swarm_status.py"`;
+const CMD_FED_STAT   = `python "C:\\Xova\\plugins\\federation_status.py"`;
+const RUN_LOG_PATH   = "C:\\Xova\\memory\\aeon_run_log.jsonl";
+const BROKER_PATH    = "C:\\Xova\\memory\\context_broker.json";
+const AGENT_BOARD    = "C:\\Xova\\memory\\agent_board.json";
+function cohColor(c: number): string {
+  return c >= 0.8 ? "#34d399" : c >= 0.5 ? "#fbbf24" : c > 0 ? "#f87171" : "#52525b";
+}
+
 const W = 360, H = 100, PAD = { t: 6, r: 6, b: 18, l: 6 };
 const IW = W - PAD.l - PAD.r, IH = H - PAD.t - PAD.b;
 const PHI_SPIRAL = (1 + Math.sqrt(5)) / 2;
@@ -41,6 +48,9 @@ interface FieldWeaveSlot { ok: boolean; score: number; golden_deg?: number; coh_
 interface TernarySlot { ok: boolean; score: number; affirm: number; neutral: number; deny: number; ternary_balance: number; gate_rate: number; stability: number; ts: number }
 interface LucasSlot { ok: boolean; score: number; n_terms: number; final_ratio: number; conv_err: number; last_stdev: number; aeon_phi?: number; binet_ok?: boolean; seq_sample?: number[]; ts: number }
 interface CorpusSlot { ok: boolean; score: number; total: number; with_excerpt: number; coverage: number; freshness: number; coherence: number; fresh_7d: number; top_roots?: [string, number][]; top_exts?: [string, number][]; ts: number }
+interface AgentBoardEntry { alive: boolean; checkin_ts?: number; last_seen?: number; model?: string; }
+interface SwarmStatusResult { ok: boolean; status?: { shards?: number; tasks_completed?: number; avg_coherence?: number }; shards?: unknown[]; tasks_completed?: number; avg_coherence?: number; note?: string; error?: string; }
+interface FedStatusResult { ok: boolean; status?: { repos?: Record<string, unknown>; global_coherence?: number }; coherence?: { global_coherence?: number; repos?: Record<string, unknown> }; global_coherence?: number; note?: string; error?: string; import_error?: string; }
 
 export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [summary,    setSummary]    = useState<AeonSummary | null>(null);
@@ -57,11 +67,17 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [corpusSlot,  setCorpusSlot]  = useState<CorpusSlot | null>(null);
   const [corpusRunning, setCorpusRunning] = useState(false);
   const [scanRunning,   setScanRunning]   = useState(false);
+  const [swarmStatus,   setSwarmStatus]   = useState<SwarmStatusResult | null>(null);
+  const [swarmStatRunning, setSwarmStatRunning] = useState(false);
+  const [fedStatus,     setFedStatus]     = useState<FedStatusResult | null>(null);
+  const [fedStatRunning, setFedStatRunning] = useState(false);
+  const [agentAlive,    setAgentAlive]    = useState<number | null>(null);
+  const [agentTotal,    setAgentTotal]    = useState<number | null>(null);
   const [err,        setErr]        = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [sweeping,   setSweeping]   = useState(false);
   const [updatedAt,  setUpdatedAt]  = useState("");
-  const [tab,        setTab]        = useState<"sim" | "sweep" | "history" | "ci" | "lucas">("sim");
+  const [tab,        setTab]        = useState<"sim" | "sweep" | "history" | "ci" | "lucas" | "stack">("sim");
 
   async function xovaRun(cmd: string): Promise<string> {
     const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
@@ -93,6 +109,33 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       const cr = broker.slots?.["xova.corpus_recall"] as CorpusSlot | undefined;
       if (cr?.ok) setCorpusSlot(cr);
     } catch { /**/ }
+    // Load agent board for stack tab
+    try {
+      const abRaw = await invoke<string>("xova_read_file", { path: AGENT_BOARD });
+      const board = JSON.parse(abRaw) as Record<string, AgentBoardEntry | number>;
+      const entries = Object.entries(board).filter(([k]) => k !== "ts");
+      const alive = entries.filter(([, v]) => typeof v === "object" && v !== null && (v as AgentBoardEntry).alive).length;
+      setAgentAlive(alive);
+      setAgentTotal(entries.length);
+    } catch { /**/ }
+  }, []);
+
+  const runSwarmStat = useCallback(async () => {
+    setSwarmStatRunning(true);
+    try {
+      const stdout = await xovaRun(CMD_SWARM_STAT);
+      setSwarmStatus(JSON.parse(stdout) as SwarmStatusResult);
+    } catch { /**/ }
+    setSwarmStatRunning(false);
+  }, []);
+
+  const runFedStat = useCallback(async () => {
+    setFedStatRunning(true);
+    try {
+      const stdout = await xovaRun(CMD_FED_STAT);
+      setFedStatus(JSON.parse(stdout) as FedStatusResult);
+    } catch { /**/ }
+    setFedStatRunning(false);
   }, []);
 
   const runCI = useCallback(async () => {
@@ -215,7 +258,7 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       <div className="flex items-center gap-2 px-3 py-2 border-b border-zinc-800 shrink-0">
         <span className="text-[9px] uppercase tracking-wider text-zinc-500">AEON{updatedAt ? ` · ${updatedAt}` : ""}</span>
         <div className="flex gap-1 ml-auto">
-          {(["sim", "sweep", "history", "ci", "lucas"] as const).map(t => (
+          {(["sim", "sweep", "history", "ci", "lucas", "stack"] as const).map(t => (
             <button key={t} onClick={() => setTab(t)}
               className={`px-2 py-0.5 rounded border text-[8px] transition-colors ${tab === t ? "border-violet-600 text-violet-300 bg-violet-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"}`}>
               {t === "ci" && ciHealth
@@ -625,6 +668,132 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
               </div>
             </>
           )}
+        </div>
+      )}
+
+      {/* AGI Stack tab */}
+      {tab === "stack" && (
+        <div className="flex-1 overflow-y-auto p-3 space-y-2">
+          <div className="text-[8px] text-zinc-500 uppercase tracking-wider mb-1">5-system AGI stack</div>
+          {/* System 1: Agent Fleet */}
+          <div className="rounded border border-zinc-800 bg-zinc-900/60 p-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[9px] text-zinc-300 font-mono">1 · Agent Fleet</div>
+                <div className="text-[7px] text-zinc-600 mt-0.5">13 concrete repo-acting agents · agent_board.json</div>
+              </div>
+              {agentAlive !== null && agentTotal !== null ? (
+                <div className="text-right">
+                  <span className="text-[11px] font-bold" style={{ color: agentAlive === agentTotal ? "#34d399" : "#fbbf24" }}>
+                    {agentAlive}/{agentTotal}
+                  </span>
+                  <div className="text-[7px] text-zinc-600">alive</div>
+                </div>
+              ) : (
+                <span className="text-zinc-600 text-[8px]">loading…</span>
+              )}
+            </div>
+          </div>
+          {/* System 2: EvolutionEngine */}
+          <div className="rounded border border-zinc-800 bg-zinc-900/60 p-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[9px] text-zinc-300 font-mono">2 · EvolutionEngine</div>
+                <div className="text-[7px] text-zinc-600 mt-0.5">13×4 self-evolution stages · 81 tests · see mesh → events</div>
+              </div>
+              <span className="text-violet-400 text-[8px] font-mono">evo_apply</span>
+            </div>
+          </div>
+          {/* System 3: Swarm */}
+          <div className="rounded border border-zinc-800 bg-zinc-900/60 p-2 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[9px] text-zinc-300 font-mono">3 · Swarm Orchestrator</div>
+                <div className="text-[7px] text-zinc-600 mt-0.5">CellShard + Governor + Orchestrator · 94 tests</div>
+              </div>
+              <button onClick={runSwarmStat} disabled={swarmStatRunning}
+                className="px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-400 text-[7px] hover:bg-zinc-800/40 disabled:opacity-40 shrink-0">
+                {swarmStatRunning ? "…" : "probe"}
+              </button>
+            </div>
+            {swarmStatus && (
+              <div className="flex gap-3 text-[8px] flex-wrap">
+                {swarmStatus.ok ? (
+                  <>
+                    {swarmStatus.note ? (
+                      <span className="text-zinc-600">{swarmStatus.note.slice(0, 60)}</span>
+                    ) : (
+                      <>
+                        <span className="text-zinc-500">shards <span className="text-zinc-300">{swarmStatus.status?.shards ?? "—"}</span></span>
+                        <span className="text-zinc-500">tasks <span className="text-zinc-300">{swarmStatus.status?.tasks_completed ?? swarmStatus.tasks_completed ?? "—"}</span></span>
+                        {(swarmStatus.status?.avg_coherence ?? swarmStatus.avg_coherence) != null && (
+                          <span style={{ color: cohColor(swarmStatus.status?.avg_coherence ?? swarmStatus.avg_coherence ?? 0) }}>
+                            coh {(swarmStatus.status?.avg_coherence ?? swarmStatus.avg_coherence)?.toFixed(3)}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-red-400">{swarmStatus.error?.slice(0, 60)}</span>
+                )}
+              </div>
+            )}
+          </div>
+          {/* System 4: Federation */}
+          <div className="rounded border border-zinc-800 bg-zinc-900/60 p-2 space-y-1.5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[9px] text-zinc-300 font-mono">4 · FederationMesh</div>
+                <div className="text-[7px] text-zinc-600 mt-0.5">FederationMesh + adapters · 79 tests</div>
+              </div>
+              <button onClick={runFedStat} disabled={fedStatRunning}
+                className="px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-400 text-[7px] hover:bg-zinc-800/40 disabled:opacity-40 shrink-0">
+                {fedStatRunning ? "…" : "probe"}
+              </button>
+            </div>
+            {fedStatus && (
+              <div className="flex gap-3 text-[8px] flex-wrap">
+                {fedStatus.ok ? (
+                  fedStatus.note ? (
+                    <span className="text-zinc-600">{fedStatus.note.slice(0, 60)}</span>
+                  ) : (
+                    <>
+                      {(fedStatus.coherence?.global_coherence ?? fedStatus.global_coherence) != null && (
+                        <span style={{ color: cohColor(fedStatus.coherence?.global_coherence ?? fedStatus.global_coherence ?? 0) }}>
+                          global_coh {(fedStatus.coherence?.global_coherence ?? fedStatus.global_coherence)?.toFixed(3)}
+                        </span>
+                      )}
+                      {fedStatus.coherence?.repos && (
+                        <span className="text-zinc-500">repos <span className="text-zinc-300">{Object.keys(fedStatus.coherence.repos).length}</span></span>
+                      )}
+                    </>
+                  )
+                ) : (
+                  <span className="text-red-400">{(fedStatus.error ?? fedStatus.import_error ?? "").slice(0, 60)}</span>
+                )}
+              </div>
+            )}
+          </div>
+          {/* System 5: AEON Evolve */}
+          <div className="rounded border border-zinc-800 bg-zinc-900/60 p-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-[9px] text-zinc-300 font-mono">5 · AEON / Evolve</div>
+                <div className="text-[7px] text-zinc-600 mt-0.5">xova/evolve.py AES plugin · 6 tests · sweep result in broker</div>
+              </div>
+              {sweep?.optimal?.quality != null ? (
+                <div className="text-right">
+                  <span className="text-[11px] font-bold" style={{ color: sweep.optimal.quality >= 0.8 ? "#34d399" : "#fbbf24" }}>
+                    {(sweep.optimal.quality * 100).toFixed(1)}%
+                  </span>
+                  <div className="text-[7px] text-zinc-600">quality</div>
+                </div>
+              ) : (
+                <span className="text-zinc-600 text-[8px]">run sweep →</span>
+              )}
+            </div>
+          </div>
         </div>
       )}
 
