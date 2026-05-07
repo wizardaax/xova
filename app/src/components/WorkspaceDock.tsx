@@ -78,9 +78,12 @@ import { CoherenceInbox } from "./CoherenceInbox";
 import { StandingFacts } from "./StandingFacts";
 import { ForgeRateLog } from "./ForgeRateLog";
 import { VoiceUserInbox } from "./VoiceUserInbox";
+import { SessionViewer } from "./SessionViewer";
+import { ForgeEventsLog } from "./ForgeEventsLog";
+import { ForgeOutbox } from "./ForgeOutbox";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog" | "agentrostr" | "violations" | "swarmdispatch" | "ltmemory" | "selfevalstore" | "evoruns" | "phiucb" | "sysinfo" | "trashstats" | "meshfeed" | "goalproposals" | "coherenceinbox" | "standingfacts" | "forgerate" | "voiceuserinbox";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog" | "agentrostr" | "violations" | "swarmdispatch" | "ltmemory" | "selfevalstore" | "evoruns" | "phiucb" | "sysinfo" | "trashstats" | "meshfeed" | "goalproposals" | "coherenceinbox" | "standingfacts" | "forgerate" | "voiceuserinbox" | "sessionviewer" | "forgeevents" | "forgeoutbox";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -161,6 +164,9 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "standingfacts",  label: "Standing",    emoji: "📌" },
   { id: "forgerate",      label: "Forge Rate",  emoji: "📈" },
   { id: "voiceuserinbox", label: "Voice In",    emoji: "🎧" },
+  { id: "sessionviewer",  label: "Session",     emoji: "💬" },
+  { id: "forgeevents",    label: "Forge Evts",  emoji: "⚠" },
+  { id: "forgeoutbox",    label: "Forge Out",   emoji: "📤" },
 ];
 
 interface WorkspaceDockProps {
@@ -304,6 +310,9 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "standingfacts"   && <StandingFacts   onClose={() => onTab(null)} />}
             {activeTab === "forgerate"       && <ForgeRateLog    onClose={() => onTab(null)} />}
             {activeTab === "voiceuserinbox"  && <VoiceUserInbox  onClose={() => onTab(null)} />}
+            {activeTab === "sessionviewer"   && <SessionViewer   onClose={() => onTab(null)} />}
+            {activeTab === "forgeevents"     && <ForgeEventsLog  onClose={() => onTab(null)} />}
+            {activeTab === "forgeoutbox"     && <ForgeOutbox     onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
