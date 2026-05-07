@@ -150,6 +150,8 @@ CONTEXT_BROKER    = r"C:\Xova\memory\context_broker.json"
 SCE88_GATE        = r"C:\Xova\plugins\sce88_gate.py"
 GOAL_MANAGER      = r"C:\Xova\plugins\goal_manager.py"
 GOAL_STORE        = r"C:\Xova\memory\goal_store.json"
+SELF_EVAL         = r"C:\Xova\plugins\self_eval.py"
+SELF_EVAL_STORE   = r"C:\Xova\memory\self_eval_store.json"
 
 
 def _load_active_goal() -> tuple[str | None, str | None]:
@@ -166,6 +168,38 @@ def _load_active_goal() -> tuple[str | None, str | None]:
         return gid, goal.get("text")
     except Exception:
         return None, None
+
+
+def _read_strategy(agent: str = "mesh") -> str:
+    """Return the current self-eval strategy instruction for this agent."""
+    try:
+        if not os.path.isfile(SELF_EVAL_STORE):
+            return ""
+        with open(SELF_EVAL_STORE, encoding="utf-8") as fh:
+            store = json.load(fh)
+        s = store.get("strategies", {}).get(agent, {})
+        return s.get("strategy", "")
+    except Exception:
+        return ""
+
+
+def _run_self_eval(output: str, goal: str, goal_id: str, agent: str = "mesh") -> float:
+    """Score output against goal, store eval + strategy. Returns score."""
+    try:
+        r = subprocess.run(
+            [sys.executable, SELF_EVAL,
+             "--action",  "eval",
+             "--agent",   agent,
+             "--goal",    goal[:500],
+             "--goal-id", goal_id,
+             "--output",  output[:600]],
+            capture_output=True, text=True, timeout=8,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        data = json.loads(r.stdout.strip()) if r.stdout.strip() else {}
+        return float(data.get("score", 0.0))
+    except Exception:
+        return 0.0
 
 
 def _write_goal_progress(gid: str, note: str, coherence: float) -> None:
@@ -587,12 +621,14 @@ def main() -> None:
             continue
 
         active_goal_id, active_goal_text = _load_active_goal()
+        goal_idx = _ucb_select_goal(ucb_state, ucb_t)
         if active_goal_text:
-            goal     = active_goal_text
-            goal_idx = _ucb_select_goal(ucb_state, ucb_t)  # still update UCB for reward tracking
+            # Prepend self-eval strategy so the agent adjusts its approach
+            strategy = _read_strategy("mesh")
+            goal = (f"[strategy: {strategy}] {active_goal_text}"
+                    if strategy else active_goal_text)
         else:
-            goal_idx = _ucb_select_goal(ucb_state, ucb_t)
-            goal     = ROTATING_GOALS[goal_idx]
+            goal           = ROTATING_GOALS[goal_idx]
             active_goal_id = None
         cycle_num += 1
 
@@ -664,13 +700,16 @@ def main() -> None:
                     "ts":          time.time(),
                 })
 
-                # Persistent goal: write progress note
-                if active_goal_id:
-                    _write_goal_progress(
-                        active_goal_id,
-                        f"cycle {cycle_num} — avg coh {result.average_coherence:.3f} · phase {cycle._derive_phase().lower()}",
-                        result.average_coherence,
+                # Persistent goal: write progress note + self-eval
+                if active_goal_id and active_goal_text:
+                    cycle_summary = (
+                        f"cycle {cycle_num} — avg coh {result.average_coherence:.3f} · "
+                        f"phase {cycle._derive_phase().lower()} · "
+                        f"{len(result.results)} agents ran"
                     )
+                    _write_goal_progress(active_goal_id, cycle_summary, result.average_coherence)
+                    eval_score = _run_self_eval(cycle_summary, active_goal_text, active_goal_id, "mesh")
+                    _log(f"self-eval: score={eval_score:.3f} vs goal")
 
             except Exception as exc:
                 _append({

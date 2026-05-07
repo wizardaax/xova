@@ -1,8 +1,26 @@
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-const FORGE_PATH = "C:\\Xova\\memory\\forge_events.jsonl";
-const POLL_MS = 15_000;
+const FORGE_PATH     = "C:\\Xova\\memory\\forge_events.jsonl";
+const SELF_EVAL_STORE = "C:\\Xova\\memory\\self_eval_store.json";
+const POLL_MS = 10_000;
+
+interface EvalEntry {
+  ts: number; agent: string; goal_id: string;
+  score: number; strategy: string; output_snippet: string;
+  hit: string[]; missed: string[];
+}
+interface SelfEvalStore {
+  strategies: Record<string, { strategy: string; score: number; ts: number; goal_id: string }>;
+  history: EvalEntry[];
+}
+
+function scoreColor(s: number): string {
+  return s >= 0.7 ? "#34d399" : s >= 0.45 ? "#fbbf24" : "#f87171";
+}
+function fmtTs(ts: number) {
+  return new Date(ts > 1e10 ? ts : ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
 const CHART_W = 360; const CHART_H = 56;
 const BUCKETS = 12; const BUCKET_MS = 10 * 60_000;
 
@@ -54,12 +72,17 @@ function FreqBars({ events }: { events: SelfEvalEvent[] }) {
 }
 
 export function SelfEvalChart({ onClose }: { onClose: () => void }) {
-  const [events, setEvents] = useState<SelfEvalEvent[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [events,    setEvents]    = useState<SelfEvalEvent[]>([]);
+  const [evalStore, setEvalStore] = useState<SelfEvalStore | null>(null);
+  const [loading,   setLoading]   = useState(true);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const load = async () => {
     try { const raw = await invoke<string>("xova_read_file", { path: FORGE_PATH }); setEvents(parseEvents(raw)); } catch { /* silent */ }
+    try {
+      const raw = await invoke<string>("xova_read_file", { path: SELF_EVAL_STORE });
+      setEvalStore(JSON.parse(raw) as SelfEvalStore);
+    } catch { /* silent */ }
     setLoading(false);
   };
 
@@ -70,13 +93,91 @@ export function SelfEvalChart({ onClose }: { onClose: () => void }) {
   const flagged = events.filter(e=>e.flagged).length;
   const recent = [...events].reverse().slice(0,10);
 
+  const recentEvals = evalStore ? [...(evalStore.history ?? [])].reverse().slice(0, 15) : [];
+  const strategies  = evalStore?.strategies ?? {};
+
   return (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-300 font-mono text-[11px] overflow-y-auto p-3 space-y-3">
       <div className="flex items-center justify-between shrink-0">
         <span className="text-[9px] uppercase tracking-wider text-zinc-500">Self-Eval Monitor</span>
-        <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">✕</button>
+        <button onClick={load} className="text-zinc-600 hover:text-zinc-300 text-[11px]">↻</button>
+        <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300 ml-1">✕</button>
       </div>
       {loading && <div className="text-zinc-600 text-center">loading…</div>}
+
+      {/* ── Goal-alignment strategies ─────────────────────────── */}
+      {Object.keys(strategies).length > 0 && (
+        <div className="space-y-1.5">
+          <div className="text-[9px] uppercase tracking-wider text-emerald-600">Current Strategy</div>
+          {Object.entries(strategies).map(([agent, s]) => (
+            <div key={agent} className="bg-zinc-900 rounded p-2 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-zinc-400 text-[9px] uppercase">{agent}</span>
+                <span className="font-bold text-[11px] tabular-nums" style={{ color: scoreColor(s.score) }}>
+                  {s.score.toFixed(3)}
+                </span>
+                <span className="text-zinc-600 text-[8px] ml-auto">{fmtTs(s.ts)}</span>
+              </div>
+              <div className="text-[10px] text-zinc-300 leading-snug">{s.strategy}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Score history sparkline ───────────────────────────── */}
+      {recentEvals.length > 0 && (
+        <div>
+          <div className="text-[9px] text-zinc-600 mb-1 uppercase tracking-wider">Goal-alignment score (recent {recentEvals.length})</div>
+          <div className="bg-zinc-900 rounded p-2">
+            {(() => {
+              const scores = [...recentEvals].reverse().map(e => e.score);
+              const W = 360, H = 48;
+              const pts = scores.map((s, i) => {
+                const x = scores.length < 2 ? W / 2 : (i / (scores.length - 1)) * W;
+                const y = (1 - s) * (H - 4) + 2;
+                return `${x.toFixed(1)},${y.toFixed(1)}`;
+              }).join(" ");
+              return (
+                <svg width={W} height={H} className="block">
+                  <polygon points={`0,${H} ${pts} ${W},${H}`} fill="#34d399" fillOpacity="0.08" />
+                  <polyline points={pts} fill="none" stroke="#34d399" strokeWidth="1.5" strokeLinejoin="round" />
+                  {scores.map((s, i) => {
+                    const x = scores.length < 2 ? W / 2 : (i / (scores.length - 1)) * W;
+                    const y = (1 - s) * (H - 4) + 2;
+                    return <circle key={i} cx={x} cy={y} r={2.5} fill={scoreColor(s)} />;
+                  })}
+                </svg>
+              );
+            })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Recent eval entries ───────────────────────────────── */}
+      {recentEvals.length > 0 && (
+        <div className="space-y-1">
+          <div className="text-[9px] uppercase tracking-wider text-zinc-600">Recent Evals</div>
+          {recentEvals.slice(0, 8).map((e, i) => (
+            <div key={i} className="bg-zinc-900 rounded p-1.5 space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-[8px] text-zinc-500 uppercase">{e.agent}</span>
+                <span className="font-bold tabular-nums text-[10px]" style={{ color: scoreColor(e.score) }}>
+                  {e.score.toFixed(3)}
+                </span>
+                <span className="text-zinc-600 text-[8px] ml-auto">{fmtTs(e.ts)}</span>
+              </div>
+              <div className="text-zinc-500 text-[9px] truncate">{e.output_snippet}</div>
+              {e.missed.length > 0 && (
+                <div className="text-[8px] text-amber-600 truncate">
+                  missed: {e.missed.slice(0, 5).join(", ")}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="border-t border-zinc-900 pt-2" />
       <div><div className="text-[9px] text-zinc-600 mb-1">Risk over time (1–5 · 🟡=flagged)</div><div className="bg-zinc-900 rounded p-2"><RiskLine events={events} /></div></div>
       <div><div className="text-[9px] text-zinc-600 mb-1">Frequency (10-min buckets, last 2h)</div><div className="bg-zinc-900 rounded p-2"><FreqBars events={events} /></div></div>
       <div className="grid grid-cols-4 gap-1">

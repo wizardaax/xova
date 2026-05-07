@@ -72,6 +72,8 @@ VIOLATIONS_LOG    = r"C:\Xova\memory\sentinel_violations.jsonl"
 VIOLATIONS_CAP    = 1000
 GOAL_MANAGER      = r"C:\Xova\plugins\goal_manager.py"
 GOAL_STORE        = r"C:\Xova\memory\goal_store.json"
+SELF_EVAL         = r"C:\Xova\plugins\self_eval.py"
+SELF_EVAL_STORE   = r"C:\Xova\memory\self_eval_store.json"
 
 _call_timestamps:    list[float] = []  # wall-time of recent claude --print calls
 _last_inbox_ts:      int = 0
@@ -314,6 +316,33 @@ def _deliver_reply(text: str, from_agent: str, correlation_id: str | None, origi
         _log(f"routed forge->xova: '{text[:60]}'")
 
 
+def _load_goal_state() -> tuple[str | None, str | None]:
+    """Return (active_goal_id, active_goal_text) from goal store."""
+    try:
+        if not os.path.isfile(GOAL_STORE):
+            return None, None
+        with open(GOAL_STORE, encoding="utf-8") as fh:
+            store = json.load(fh)
+        gid = store.get("active_goal")
+        if not gid:
+            return None, None
+        return gid, store["goals"].get(gid, {}).get("text")
+    except Exception:
+        return None, None
+
+
+def _read_forge_strategy() -> str:
+    """Return current self-eval strategy instruction for forge."""
+    try:
+        if not os.path.isfile(SELF_EVAL_STORE):
+            return ""
+        with open(SELF_EVAL_STORE, encoding="utf-8") as fh:
+            store = json.load(fh)
+        return store.get("strategies", {}).get("forge", {}).get("strategy", "")
+    except Exception:
+        return ""
+
+
 def _write_goal_progress(note: str) -> None:
     """Write a progress note to the active goal (non-blocking, best-effort)."""
     try:
@@ -331,6 +360,26 @@ def _write_goal_progress(note: str) -> None:
              "--note",  note[:400],
              "--coherence", "0.0",
              "--agent", "forge"],
+            creationflags=NO_WIN,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception:
+        pass
+
+
+def _run_forge_self_eval(reply: str) -> None:
+    """Score forge reply against active goal; store eval + updated strategy."""
+    try:
+        gid, goal_text = _load_goal_state()
+        if not gid or not goal_text:
+            return
+        subprocess.Popen(
+            [sys.executable, SELF_EVAL,
+             "--action",  "eval",
+             "--agent",   "forge",
+             "--goal",    goal_text[:500],
+             "--goal-id", gid,
+             "--output",  reply[:600]],
             creationflags=NO_WIN,
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
@@ -430,6 +479,11 @@ def _route_inbox(mode: str) -> None:
         )
         return
 
+    # Prepend self-eval strategy so forge adjusts approach based on past scores
+    strategy = _read_forge_strategy()
+    if strategy:
+        text = f"[self-eval strategy: {strategy}]\n\n{text}"
+
     _log(f"calling claude --print (calls this hour: {_rate_used() + 1}/{RATE_LIMIT})")
     text = _sce88_check(text, from_agent)  # SCE-88 advisory gate
     reply_text = _strip_role_prefix(_call_claude(text))  # AUDIT-2-025
@@ -437,6 +491,7 @@ def _route_inbox(mode: str) -> None:
     _log(f"claude replied: '{reply_text[:80]}'")
     _deliver_reply(reply_text, from_agent, correlation_id, ts)
     _write_goal_progress(f"forge reply to {from_agent}: {reply_text[:120]}")
+    _run_forge_self_eval(reply_text)  # score reply against active goal
 
 
 def _route_voice_to_forge(mode: str) -> None:
