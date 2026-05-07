@@ -40,6 +40,7 @@ export function EventsLog({ onClose }: { onClose: () => void }) {
   const [loading, setLoading] = useState(true);
   const [showForge, setShowForge] = useState(true);
   const [showMesh, setShowMesh] = useState(true);
+  const [kindFilter, setKindFilter] = useState("");
   const [updatedAt, setUpdatedAt] = useState("");
 
   const refresh = useCallback(async () => {
@@ -62,7 +63,10 @@ export function EventsLog({ onClose }: { onClose: () => void }) {
 
   useEffect(() => { refresh(); const id = setInterval(refresh, 15_000); return () => clearInterval(id); }, [refresh]);
 
-  const visible = entries.filter(e => (e.source === "forge" ? showForge : showMesh));
+  const visible = entries.filter(e =>
+    (e.source === "forge" ? showForge : showMesh) &&
+    (!kindFilter.trim() || e.kind.toLowerCase().includes(kindFilter.toLowerCase()) || keyData(e).toLowerCase().includes(kindFilter.toLowerCase()))
+  );
 
   return (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-300 font-mono text-[11px]">
@@ -78,6 +82,14 @@ export function EventsLog({ onClose }: { onClose: () => void }) {
         </button>
         <button onClick={refresh} disabled={loading} className="ml-auto text-zinc-600 hover:text-zinc-300 disabled:opacity-40">↻</button>
         <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">✕</button>
+      </div>
+      <div className="px-3 py-1 border-b border-zinc-800 shrink-0">
+        <input
+          value={kindFilter}
+          onChange={e => setKindFilter(e.target.value)}
+          placeholder="filter by kind or data…"
+          className="w-full bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-[9px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-zinc-500"
+        />
       </div>
 
       {loading && entries.length === 0 && <div className="flex-1 flex items-center justify-center text-zinc-600">loading events…</div>}
