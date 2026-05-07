@@ -326,6 +326,110 @@ def _write_goal_progress(gid: str, note: str, coherence: float) -> None:
         pass
 
 
+_EVAL_STOPWORDS = {
+    "the","a","an","and","or","but","in","on","at","to","for","of","with",
+    "is","are","was","were","be","been","being","have","has","had","do",
+    "does","did","will","would","could","should","may","might","shall",
+    "not","no","it","its","this","that","these","those","i","we","you",
+    "he","she","they","their","our","my","your","his","her","from","by",
+    "as","if","then","so","all","each","any","more","also","just","can",
+}
+
+
+def _eval_agents_batch(results: list[dict], goal: str, goal_id: str) -> None:
+    """Score every agent's output against the goal in one store read+write.
+
+    Avoids 13 sequential subprocess spawns and file-write race conditions.
+    Mirrors the self_eval.py scoring formula exactly.
+    """
+    import re
+
+    def _tok(text: str) -> list[str]:
+        words = re.findall(r"[a-z]+", text.lower())
+        return [w for w in words if len(w) > 3 and w not in _EVAL_STOPWORDS]
+
+    def _score(output: str, goal_str: str) -> tuple[float, list[str], list[str]]:
+        gt = set(_tok(goal_str))
+        ot = set(_tok(output))
+        oa = _tok(output)
+        if not gt:
+            return 0.5, [], []
+        hit    = gt & ot
+        missed = sorted(gt - ot)
+        score  = round(
+            0.55 * len(hit) / len(gt)
+            + 0.25 * min(len(output) / 500.0, 1.0)
+            + 0.20 * min(len(set(oa)) / 40.0, 1.0),
+            4,
+        )
+        return score, sorted(hit), missed
+
+    try:
+        with open(SELF_EVAL_STORE, encoding="utf-8") as fh:
+            store = json.load(fh)
+    except Exception:
+        store = {"version": 1, "strategies": {}, "history": []}
+    store.setdefault("strategies", {})
+    store.setdefault("history", [])
+
+    now = time.time()
+    goal_trunc = goal[:500]
+
+    for r in results:
+        raw_agent    = r.get("agent", "")
+        agent_label  = AGENT_LABELS.get(raw_agent, ("??", raw_agent))[1]
+        agent_key    = raw_agent  # e.g. "agent-07"
+        output       = _humanize(r)
+        score, hit, missed = _score(output, goal_trunc)
+
+        recent = [e["score"] for e in store["history"] if e.get("agent") == agent_key][-5:]
+        trend  = ""
+        if len(recent) >= 3:
+            avg3 = sum(recent[-3:]) / 3
+            if avg3 < score - 0.1:
+                trend = " (improving)"
+            elif avg3 > score + 0.1:
+                trend = " (declining)"
+        if score >= 0.80:
+            strategy = f"maintain current approach — score {score:.3f}{trend}"
+        elif score >= 0.60:
+            strategy = f"score {score:.3f}{trend} — expand: [{', '.join(missed[:4])}]"
+        else:
+            strategy = f"LOW {score:.3f}{trend} — refocus: [{', '.join(missed[:7])}]"
+
+        entry = {
+            "ts":             now,
+            "agent":          agent_key,
+            "label":          agent_label,
+            "goal_id":        goal_id or "",
+            "score":          score,
+            "hit":            hit,
+            "missed":         missed,
+            "strategy":       strategy,
+            "output_snippet": output[:200],
+        }
+        store["history"].append(entry)
+        store["strategies"][agent_key] = {
+            "strategy": strategy,
+            "score":    score,
+            "ts":       now,
+            "goal_id":  goal_id or "",
+            "label":    agent_label,
+        }
+
+    if len(store["history"]) > 500:
+        store["history"] = store["history"][-500:]
+    store["updated_at"] = now
+
+    try:
+        tmp = SELF_EVAL_STORE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(store, fh, ensure_ascii=False, indent=2)
+        os.replace(tmp, SELF_EVAL_STORE)
+    except Exception as exc:
+        _log(f"batch eval write error: {exc}")
+
+
 def _write_context_slot(key: str, value: object, agent: str = "mesh") -> None:
     """Append a slot to context_broker.json via sce88-gate helper subprocess."""
     try:
@@ -880,7 +984,10 @@ def main() -> None:
                     "ts":          time.time(),
                 })
 
-                # Persistent goal: write progress note + self-eval
+                # Per-agent self-eval (in-process, one store write for all 13 agents)
+                _eval_agents_batch(result.results, goal, active_goal_id or "")
+
+                # Persistent goal: write progress note + mesh-level self-eval
                 if active_goal_id and active_goal_text:
                     cycle_summary = (
                         f"cycle {cycle_num} — avg coh {result.average_coherence:.3f} · "
