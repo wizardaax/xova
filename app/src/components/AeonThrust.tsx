@@ -7,6 +7,7 @@ const CMD_CI       = `python "C:\\Xova\\plugins\\ci_health.py" --action run`;
 const CMD_WEAVE    = `python "C:\\Xova\\plugins\\field_weave.py" --action run`;
 const CMD_TERNARY  = `python "C:\\Xova\\plugins\\ternary_eval.py" --action run`;
 const CMD_LUCAS    = `python "C:\\Xova\\plugins\\lucas_phase.py" --action run`;
+const CMD_CORPUS   = `python "C:\\Xova\\plugins\\corpus_recall.py" --action run`;
 const RUN_LOG_PATH = "C:\\Xova\\memory\\aeon_run_log.jsonl";
 const BROKER_PATH  = "C:\\Xova\\memory\\context_broker.json";
 const W = 360, H = 100, PAD = { t: 6, r: 6, b: 18, l: 6 };
@@ -53,6 +54,7 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [lucasSlot,   setLucasSlot]   = useState<LucasSlot | null>(null);
   const [lucasRunning, setLucasRunning] = useState(false);
   const [corpusSlot,  setCorpusSlot]  = useState<CorpusSlot | null>(null);
+  const [corpusRunning, setCorpusRunning] = useState(false);
   const [err,        setErr]        = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [sweeping,   setSweeping]   = useState(false);
@@ -129,6 +131,16 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       if (parsed.ok) { setLucasSlot(parsed); setTab("lucas"); }
     } catch { /**/ }
     setLucasRunning(false);
+  }, []);
+
+  const runCorpus = useCallback(async () => {
+    setCorpusRunning(true);
+    try {
+      const stdout = await xovaRun(CMD_CORPUS);
+      const parsed = JSON.parse(stdout) as CorpusSlot;
+      if (parsed.ok) setCorpusSlot(parsed);
+    } catch { /**/ }
+    setCorpusRunning(false);
   }, []);
 
   const refresh = useCallback(async () => {
@@ -357,9 +369,15 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
         <div className="mx-3 mb-3 rounded border border-zinc-800 bg-zinc-900/60 p-2 space-y-1.5 shrink-0">
           <div className="flex items-center justify-between">
             <span className="text-[8px] text-zinc-500 uppercase tracking-wider">corpus recall</span>
-            <span className="font-mono text-[8px]" style={{ color: corpusSlot.score >= 0.8 ? "#34d399" : corpusSlot.score >= 0.6 ? "#fbbf24" : "#f87171" }}>
-              {(corpusSlot.score * 100).toFixed(1)}%
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="font-mono text-[8px]" style={{ color: corpusSlot.score >= 0.8 ? "#34d399" : corpusSlot.score >= 0.6 ? "#fbbf24" : "#f87171" }}>
+                {(corpusSlot.score * 100).toFixed(1)}%
+              </span>
+              <button onClick={runCorpus} disabled={corpusRunning}
+                className="px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-400 text-[7px] hover:bg-zinc-800/40 disabled:opacity-40">
+                {corpusRunning ? "…" : "run"}
+              </button>
+            </div>
           </div>
           <div className="flex gap-3 text-[8px] flex-wrap">
             <span className="text-zinc-500">total <span className="text-zinc-200">{corpusSlot.total.toLocaleString()}</span></span>

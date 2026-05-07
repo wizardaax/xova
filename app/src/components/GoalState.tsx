@@ -12,6 +12,7 @@ const DREAM_CMD       = `python "C:\\Xova\\plugins\\dream_consolidator.py" --act
 const SCAN_CMD        = `python "C:\\Xova\\plugins\\domain_scan.py"`;
 const SELF_EVAL_STORE = "C:\\Xova\\memory\\self_eval_store.json";
 const SELF_MOD_STORE  = "C:\\Xova\\memory\\self_mod_proposals.json";
+const REPO_SYNC_CMD   = `python "C:\\Xova\\plugins\\repo_sync.py" --action run`;
 
 interface ProgressEntry {
   ts:        number;
@@ -119,6 +120,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [evalHistory,  setEvalHistory]  = useState<SelfEvalEntry[]>([]);
   const [selfMods,     setSelfMods]     = useState<SelfModProposal[]>([]);
   const [repoSlot,     setRepoSlot]     = useState<RepoSyncSlot | null>(null);
+  const [repoRunning,  setRepoRunning]  = useState(false);
   const [dreamRunning, setDreamRunning] = useState(false);
   const [scanRunning,  setScanRunning]  = useState(false);
   const [loading,     setLoading]     = useState(true);
@@ -261,6 +263,16 @@ export function GoalState({ onClose }: { onClose: () => void }) {
       setTimeout(() => { refresh(); setScanRunning(false); }, 35_000);
     } catch { setScanRunning(false); }
   }, [refresh]);
+
+  const runRepoSync = useCallback(async () => {
+    setRepoRunning(true);
+    try {
+      const stdout = await xovaRun(REPO_SYNC_CMD);
+      const parsed = JSON.parse(stdout) as RepoSyncSlot;
+      if (parsed.ok) setRepoSlot(parsed);
+    } catch { /**/ }
+    setRepoRunning(false);
+  }, []);
 
   if (!store) return (
     <div className="flex-1 flex items-center justify-center text-zinc-600 font-mono text-[11px]">
@@ -634,7 +646,11 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                   <span className="text-red-400">{repoSlot.dirty_list!.length} dirty</span>
                 )}
                 <span className="text-zinc-600">{repoSlot.with_docs}/{repoSlot.total} docs</span>
-                <span className="text-violet-500 font-mono ml-auto">score {repoSlot.score?.toFixed(4)}</span>
+                <span className="text-violet-500 font-mono">score {repoSlot.score?.toFixed(4)}</span>
+                <button onClick={runRepoSync} disabled={repoRunning}
+                  className="ml-auto px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 text-[8px] hover:bg-zinc-800/40 disabled:opacity-40">
+                  {repoRunning ? "scanning…" : "run sync"}
+                </button>
               </div>
               {(repoSlot.repos ?? []).map(r => {
                 const ahead = r.ahead > 0;
