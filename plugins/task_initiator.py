@@ -25,6 +25,7 @@ import argparse, json, os, re, subprocess, sys, time
 
 GOAL_STORE       = r"C:\Xova\memory\goal_store.json"
 GOAL_MANAGER     = r"C:\Xova\plugins\goal_manager.py"
+PERSONA_GOVERNOR = r"C:\Xova\plugins\persona_governor.py"
 SELF_EVAL_STORE  = r"C:\Xova\memory\self_eval_store.json"
 VIOLATIONS_LOG   = r"C:\Xova\memory\sentinel_violations.jsonl"
 DISPATCH_STORE   = r"C:\Xova\memory\swarm_dispatch.json"
@@ -120,6 +121,24 @@ def _is_duplicate(text: str, goals: list[dict]) -> bool:
     return False
 
 
+# ── xova consult ──────────────────────────────────────────────────────────────
+
+def _consult_xova(proposal: str) -> tuple[bool, str]:
+    """Ask persona_governor whether to proceed. Returns (approved, reason).
+    Fail-open: any error/timeout → approved=True."""
+    try:
+        r = subprocess.run(
+            [sys.executable, PERSONA_GOVERNOR,
+             "--action", "consult", "--proposal", proposal],
+            capture_output=True, text=True, timeout=25,
+            creationflags=NO_WIN, encoding="utf-8",
+        )
+        data = json.loads(r.stdout.strip()) if r.stdout.strip() else {}
+        return bool(data.get("approved", True)), str(data.get("reason", ""))
+    except Exception:
+        return True, "consult unavailable — proceeding"
+
+
 # ── create task ───────────────────────────────────────────────────────────────
 
 def _create_task(text: str, trigger: str, priority: int,
@@ -134,6 +153,12 @@ def _create_task(text: str, trigger: str, priority: int,
 
     if _is_duplicate(text, all_goals):
         return None
+
+    # Consult Xova before acting — she may veto if the action conflicts with
+    # current fleet priorities or duplicates ongoing work she knows about
+    approved, reason = _consult_xova(f"[{trigger}] {text[:200]}")
+    if not approved:
+        return {"skipped": "vetoed_by_xova", "reason": reason}
 
     try:
         cmd = [sys.executable, GOAL_MANAGER,

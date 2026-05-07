@@ -3319,6 +3319,74 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       }
       return;
     }
+    // /curiosity — trigger a proactive knowledge gap scan
+    if (slash === "/curiosity" || slash === "/explore" || slash === "/gaps") {
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python "C:\\Xova\\plugins\\curiosity_engine.py" --action scan`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const parsed = JSON.parse(wrap.stdout.trim()) as { ok: boolean; goals_created?: number; created?: Array<{goal_id: string; text: string}>; skipped?: Array<{reason: string; text: string}>; note?: string; daily_cap?: number; goals_today?: number; error?: string };
+        if (!parsed.ok) {
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: `curiosity scan error: ${parsed.error || wrap.stderr}`,
+          }]);
+        } else {
+          const note = parsed.note ? ` (${parsed.note})` : "";
+          const created = (parsed.created || []).map((g) => `  • [${g.goal_id}] ${g.text}`).join("\n");
+          const skippedCount = (parsed.skipped || []).length;
+          const lines = [
+            `🔍 Curiosity scan complete${note}`,
+            `Goals created: ${parsed.goals_created ?? 0}  |  Skipped: ${skippedCount}  |  Today: ${parsed.goals_today ?? 0}/${parsed.daily_cap ?? 5}`,
+            ...(created ? [created] : []),
+          ];
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: lines.join("\n"),
+          }]);
+        }
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: `curiosity engine failed: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
+    // /dream — run overnight memory consolidation (can be triggered manually)
+    if (slash === "/dream" || slash === "/consolidate" || slash === "/distil") {
+      try {
+        const raw = await invoke<string>("xova_run", {
+          command: `python "C:\\Xova\\plugins\\dream_consolidator.py" --action consolidate`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const parsed = JSON.parse(wrap.stdout.trim()) as { ok: boolean; cycle_count?: number; avg_coherence?: number | null; avg_eval_score?: number | null; error_count?: number; evolution_health?: number | null; completed_goals_count?: number; top_missed_keywords?: string[]; insights?: string[]; error?: string };
+        if (!parsed.ok) {
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: `dream consolidation error: ${parsed.error || wrap.stderr}`,
+          }]);
+        } else {
+          const coh = parsed.avg_coherence != null ? parsed.avg_coherence.toFixed(3) : "n/a";
+          const eval_ = parsed.avg_eval_score != null ? parsed.avg_eval_score.toFixed(3) : "n/a";
+          const evo = parsed.evolution_health != null ? parsed.evolution_health.toFixed(3) : "n/a";
+          const missed = (parsed.top_missed_keywords || []).join(", ") || "none";
+          const lines = [
+            `🌙 Dream consolidation complete`,
+            `Cycles: ${parsed.cycle_count ?? 0}  |  Coh: ${coh}  |  Eval: ${eval_}  |  Evo: ${evo}  |  Errors: ${parsed.error_count ?? 0}`,
+            `Completed goals: ${parsed.completed_goals_count ?? 0}  |  Top missed: ${missed}`,
+            ...(parsed.insights || []).map((s) => `  • ${s}`),
+          ];
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: lines.join("\n"),
+          }]);
+        }
+      } catch (e) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: `dream consolidator failed: ${String(e).slice(0, 200)}`,
+        }]);
+      }
+      return;
+    }
     // /sovereign — audit which features are local-only vs need internet
     if (slash === "/sovereign" || slash === "/sovrigne" || slash === "/local") {
       // Probe key local services
@@ -4673,6 +4741,8 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           { id: "p-cycles",    group: "Cognition", label: "🔁 Recent cognitive cycles (last 10)",            hint: "/cycles",    run: () => onSend("/cycles") },
           { id: "p-vault",     group: "Cognition", label: "📸 Vault snapshot history",                       hint: "/vault",     run: () => onSend("/vault") },
           { id: "p-persona",      group: "Cognition", label: "🎭 Persona governor — Xova speaks as unified fleet voice",  hint: "/persona",      run: () => onSend("/persona") },
+          { id: "p-curiosity",    group: "Cognition", label: "🔍 Curiosity scan — detect knowledge gaps, create exploration goals", hint: "/curiosity", run: () => onSend("/curiosity") },
+          { id: "p-dream",        group: "Cognition", label: "🌙 Dream consolidation — distil 24h of fleet data into long-term memory", hint: "/dream", run: () => onSend("/dream") },
           { id: "p-phone-bridge", group: "Cognition", label: "📱 Start Forge phone bridge (port 7340 — chat from phone)", hint: "/phone-bridge", run: () => onSend("/phone-bridge") },
           { id: "p-lan-on",    group: "Cognition", label: "🌐 Start LAN gateway (phone-as-thin-client)",            hint: "/lan-on",    run: () => onSend("/lan-on") },
           { id: "p-lan-off",   group: "Cognition", label: "🚫 Stop LAN gateway",                                    hint: "/lan-off",   run: () => onSend("/lan-off") },

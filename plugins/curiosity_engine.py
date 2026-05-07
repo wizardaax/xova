@@ -18,12 +18,13 @@ Actions:
 """
 import argparse, json, os, re, subprocess, sys, time
 
-SELF_EVAL_STORE = r"C:\Xova\memory\self_eval_store.json"
-CORPUS_INDEX    = r"C:\Xova\memory\corpus_index.json"
-GOAL_STORE      = r"C:\Xova\memory\goal_store.json"
-GOAL_MANAGER    = r"C:\Xova\plugins\goal_manager.py"
-STATE_PATH      = r"C:\Xova\memory\curiosity_state.json"
-NO_WIN          = 0x08000000
+SELF_EVAL_STORE  = r"C:\Xova\memory\self_eval_store.json"
+CORPUS_INDEX     = r"C:\Xova\memory\corpus_index.json"
+GOAL_STORE       = r"C:\Xova\memory\goal_store.json"
+GOAL_MANAGER     = r"C:\Xova\plugins\goal_manager.py"
+PERSONA_GOVERNOR = r"C:\Xova\plugins\persona_governor.py"
+STATE_PATH       = r"C:\Xova\memory\curiosity_state.json"
+NO_WIN           = 0x08000000
 
 EVAL_LOOKBACK   = 50
 CORPUS_GAP_PCT  = 0.05
@@ -82,11 +83,31 @@ def _is_duplicate(text: str, goals: list[dict]) -> bool:
     return False
 
 
+# ── xova consult ──────────────────────────────────────────────────────────────
+
+def _consult_xova(proposal: str) -> tuple[bool, str]:
+    """Ask persona_governor whether to proceed. Fail-open on any error."""
+    try:
+        r = subprocess.run(
+            [sys.executable, PERSONA_GOVERNOR,
+             "--action", "consult", "--proposal", proposal],
+            capture_output=True, text=True, timeout=25,
+            creationflags=NO_WIN, encoding="utf-8",
+        )
+        data = json.loads(r.stdout.strip()) if r.stdout.strip() else {}
+        return bool(data.get("approved", True)), str(data.get("reason", ""))
+    except Exception:
+        return True, "consult unavailable — proceeding"
+
+
 # ── goal creation ─────────────────────────────────────────────────────────────
 
 def _create_goal(text: str, all_goals: list[dict], state: dict) -> dict:
     if _is_duplicate(text, all_goals):
         return {"skipped": "duplicate"}
+    approved, reason = _consult_xova(text[:200])
+    if not approved:
+        return {"skipped": "vetoed_by_xova", "reason": reason}
     try:
         r = subprocess.run(
             [sys.executable, GOAL_MANAGER,

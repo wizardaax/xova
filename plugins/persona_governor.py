@@ -8,6 +8,7 @@ persistent conversation history with Adam.
 Actions:
   synthesize   read fleet state, generate status narrative, write to outbox
   chat         conversation turn: --message "..." -> governor response
+  consult      fast veto gate: --proposal "..." -> {approved, reason}
   status       current state: history length, last synthesis, live context
   clear        reset conversation history
 
@@ -241,6 +242,66 @@ def action_status() -> dict:
     }
 
 
+def action_consult(proposal: str) -> dict:
+    """Fast veto gate: ask Xova whether to proceed with a proposed fleet action.
+
+    Returns {ok, approved: bool, reason: str}. Fail-open: if Ollama is
+    unavailable the action is approved automatically (never blocks the fleet).
+    Logged to persona_outbox.jsonl for audit.
+    """
+    if not proposal.strip():
+        return {"ok": False, "approved": True, "reason": "empty proposal — auto-approved"}
+
+    ctx = _build_context()
+    messages = [
+        {"role": "system", "content": (
+            "You are Xova — executive decision gate for the 13-agent cognitive fleet. "
+            "You receive a proposed autonomous action and fleet state. "
+            "Respond with EXACTLY ONE LINE starting with APPROVED or VETOED, "
+            "a colon, then a reason in 10 words or fewer. "
+            "Example: APPROVED: coherence recovery aligns with active goal. "
+            "Example: VETOED: goal already covers this domain — duplicate effort. "
+            "No other text."
+        )},
+        {"role": "user", "content": (
+            f"Fleet state:\n{ctx}\n\n"
+            f"Proposed action: {proposal[:300]}\n\n"
+            "Approve or veto?"
+        )},
+    ]
+
+    # Fast call: 60 tokens max, low temperature for determinism
+    payload = json.dumps({
+        "model":    MODEL,
+        "messages": messages,
+        "stream":   False,
+        "options":  {"temperature": 0.2, "num_predict": 60},
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        OLLAMA_URL, data=payload,
+        headers={"Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            data   = json.loads(resp.read())
+            answer = data.get("message", {}).get("content", "").strip()
+    except Exception as exc:
+        # Fail-open: Ollama unavailable doesn't block the fleet
+        answer = ""
+        _append_outbox(f"[consult-failopen] {proposal[:120]}", "consult")
+        return {"ok": True, "approved": True, "reason": f"ollama unavailable — auto-approved ({exc})"}
+
+    first_line = answer.splitlines()[0] if answer else ""
+    approved   = not first_line.upper().startswith("VETOED")
+    reason     = first_line.split(":", 1)[-1].strip() if ":" in first_line else first_line[:80]
+
+    _append_outbox(
+        f"[consult] {'APPROVED' if approved else 'VETOED'}: {proposal[:80]} → {reason}",
+        "consult",
+    )
+    return {"ok": True, "approved": approved, "reason": reason, "raw": first_line[:120]}
+
+
 def action_clear() -> dict:
     mem = _load_memory()
     count = len(mem["history"]) // 2
@@ -253,9 +314,10 @@ def action_clear() -> dict:
 
 def main() -> None:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--action",  default="status",
-                    choices=["synthesize", "chat", "status", "clear"])
-    ap.add_argument("--message", default="")
+    ap.add_argument("--action",   default="status",
+                    choices=["synthesize", "chat", "consult", "status", "clear"])
+    ap.add_argument("--message",  default="")
+    ap.add_argument("--proposal", default="")
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -264,6 +326,9 @@ def main() -> None:
     elif args.action == "chat":
         msg = args.message.strip()
         result = action_chat(msg) if msg else {"ok": False, "error": "no message"}
+    elif args.action == "consult":
+        prop = args.proposal.strip()
+        result = action_consult(prop) if prop else {"ok": False, "error": "no proposal"}
     elif args.action == "status":
         result = action_status()
     else:
