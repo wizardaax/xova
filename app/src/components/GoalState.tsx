@@ -322,9 +322,32 @@ export function GoalState({ onClose }: { onClose: () => void }) {
               {active.progress.length} notes · updated {fmtDate(active.updated_at)} {fmtTs(active.updated_at)}
             </span>
           </div>
-          {/* Last 3 progress entries */}
+          {/* Coherence sparkline */}
+          {active.progress.length > 1 && (() => {
+            const pts = active.progress.filter(p => p.coherence > 0).slice(-60);
+            if (pts.length < 2) return null;
+            const W = 220; const H = 18; const PAD = 2;
+            const minC = Math.min(...pts.map(p => p.coherence));
+            const maxC = Math.max(...pts.map(p => p.coherence));
+            const range = maxC - minC || 0.01;
+            const points = pts.map((p, i) => {
+              const x = PAD + (i / (pts.length - 1)) * (W - PAD * 2);
+              const y = PAD + (1 - (p.coherence - minC) / range) * (H - PAD * 2);
+              return `${x.toFixed(1)},${y.toFixed(1)}`;
+            }).join(" ");
+            const lastCoh = pts[pts.length - 1].coherence;
+            return (
+              <svg width={W} height={H} className="mt-1 mb-0.5">
+                <polyline points={points} fill="none" stroke={cohColor(lastCoh)} strokeWidth="1" opacity="0.7" />
+                <line x1={PAD} y1={PAD + (1 - (0.75 - minC) / range) * (H - PAD * 2)}
+                      x2={W - PAD} y2={PAD + (1 - (0.75 - minC) / range) * (H - PAD * 2)}
+                  stroke="#3f3f46" strokeWidth="0.5" strokeDasharray="2 2" />
+              </svg>
+            );
+          })()}
+          {/* Last 5 progress entries */}
           {active.progress.length > 0 && (
-            <div className="mt-1.5 space-y-0.5 max-h-[90px] overflow-y-auto">
+            <div className="mt-0.5 space-y-0.5 max-h-[90px] overflow-y-auto">
               {active.progress.slice(-5).reverse().map((p, i) => (
                 <div key={i} className="flex gap-1.5 text-[9px]">
                   <span className="text-zinc-600 shrink-0">{fmtTs(p.ts)}</span>
