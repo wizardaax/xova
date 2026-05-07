@@ -10,7 +10,8 @@ const GOAL_MGR        = `python "C:\\Xova\\plugins\\goal_manager.py"`;
 const GOAL_PROPOSER   = `python "C:\\Xova\\plugins\\goal_proposer.py"`;
 const DREAM_CMD       = `python "C:\\Xova\\plugins\\dream_consolidator.py" --action consolidate`;
 const SCAN_CMD        = `python "C:\\Xova\\plugins\\domain_scan.py"`;
-const SELF_EVAL_STORE = "C:\\Xova\\memory\\self_eval_store.json";
+const SELF_EVAL_STORE    = "C:\\Xova\\memory\\self_eval_store.json";
+const SWARM_DISPATCH_PATH = "C:\\Xova\\memory\\swarm_dispatch.json";
 const SELF_MOD_STORE  = "C:\\Xova\\memory\\self_mod_proposals.json";
 const REPO_SYNC_CMD   = `python "C:\\Xova\\plugins\\repo_sync.py" --action run`;
 
@@ -55,6 +56,18 @@ interface LtmData {
   evolution_health?:     number;
   cycle_count?:          number;
   insights?:             string[];
+}
+interface SwarmDispatch {
+  run_id?:        string;
+  goal_id?:       string;
+  dispatched_at?: number;
+  task_types?:    string[];
+  routed?:        Array<{ agent: string; task_type: string; delivered: boolean }>;
+  passed?:        number;
+  total_agents?:  number;
+  avg_coherence?: number;
+  eval_score?:    number;
+  elapsed_s?:     number;
 }
 interface DomainSlot { ok?: boolean; score?: number; ts?: number; sweep?: Array<{ quality?: number }>; optimal?: { quality?: number } }
 interface RepoEntry { name: string; clean: boolean; ahead: number; dirty: number; has_docs: boolean; last_commit?: string; branch?: string; }
@@ -121,6 +134,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [selfMods,     setSelfMods]     = useState<SelfModProposal[]>([]);
   const [repoSlot,     setRepoSlot]     = useState<RepoSyncSlot | null>(null);
   const [repoRunning,  setRepoRunning]  = useState(false);
+  const [swarmDispatch, setSwarmDispatch] = useState<SwarmDispatch | null>(null);
   const [dreamRunning, setDreamRunning] = useState(false);
   const [scanRunning,  setScanRunning]  = useState(false);
   const [loading,     setLoading]     = useState(true);
@@ -190,6 +204,11 @@ export function GoalState({ onClose }: { onClose: () => void }) {
       const smRaw = await invoke<string>("xova_read_file", { path: SELF_MOD_STORE });
       const smData = JSON.parse(smRaw) as { proposals?: SelfModProposal[] };
       setSelfMods((smData.proposals ?? []).slice().reverse()); // newest first
+    } catch { /* ok */ }
+    // Load swarm dispatch record
+    try {
+      const sdRaw = await invoke<string>("xova_read_file", { path: SWARM_DISPATCH_PATH });
+      setSwarmDispatch(JSON.parse(sdRaw) as SwarmDispatch);
     } catch { /* ok */ }
     setLoading(false);
   }, []);
@@ -516,6 +535,32 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                   </div>
                 );
           })()}
+          {/* Swarm dispatch summary */}
+          {swarmDispatch && (
+            <div className="bg-zinc-900 rounded p-2 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[8px] text-zinc-500 uppercase tracking-wider">swarm dispatch</span>
+                <span className="text-zinc-700 text-[7px]">
+                  {swarmDispatch.dispatched_at ? fmtDate(swarmDispatch.dispatched_at) + " " + fmtTs(swarmDispatch.dispatched_at) : ""}
+                </span>
+              </div>
+              <div className="flex gap-3 text-[8px] flex-wrap">
+                <span className="text-zinc-500">coh <span style={{ color: cohColor(swarmDispatch.avg_coherence ?? 0) }}>{swarmDispatch.avg_coherence?.toFixed(4) ?? "—"}</span></span>
+                <span className="text-zinc-500">eval <span style={{ color: cohColor(swarmDispatch.eval_score ?? 0) }}>{swarmDispatch.eval_score?.toFixed(4) ?? "—"}</span></span>
+                <span className="text-zinc-500">agents <span className="text-zinc-300">{swarmDispatch.passed}/{swarmDispatch.total_agents}</span></span>
+                {swarmDispatch.elapsed_s !== undefined && (
+                  <span className="text-zinc-600">{swarmDispatch.elapsed_s.toFixed(2)}s</span>
+                )}
+              </div>
+              {(swarmDispatch.task_types?.length ?? 0) > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {swarmDispatch.task_types!.map(t => (
+                    <span key={t} className="px-1 py-0.5 rounded bg-zinc-800 text-zinc-500 text-[7px]">{t}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           {/* Dream consolidator sections — only when ltmData available */}
           {!ltmData ? (
             <div className="text-zinc-600 text-[10px] text-center py-4">dream consolidator not yet run</div>
