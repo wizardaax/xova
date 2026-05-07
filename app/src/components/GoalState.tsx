@@ -11,6 +11,7 @@ const GOAL_PROPOSER   = `python "C:\\Xova\\plugins\\goal_proposer.py"`;
 const DREAM_CMD       = `python "C:\\Xova\\plugins\\dream_consolidator.py" --action consolidate`;
 const SCAN_CMD        = `python "C:\\Xova\\plugins\\domain_scan.py"`;
 const SELF_EVAL_STORE = "C:\\Xova\\memory\\self_eval_store.json";
+const SELF_MOD_STORE  = "C:\\Xova\\memory\\self_mod_proposals.json";
 
 interface ProgressEntry {
   ts:        number;
@@ -67,6 +68,19 @@ interface UcbReward {
   ts:            number;
 }
 interface SelfEvalEntry { ts: number; agent: string; score: number; hit?: string[]; missed?: string[]; }
+interface SelfModProposal {
+  id:              string;
+  file_path:       string;
+  description:     string;
+  proposer:        string;
+  created_at:      number;
+  status:          "pending" | "applied" | "rejected";
+  sce88_pass?:     boolean;
+  sce88_coherence?: number;
+  xova_approved?:  boolean;
+  xova_reason?:    string;
+  applied_at?:     number;
+}
 
 async function xovaRun(cmd: string): Promise<string> {
   const raw = await invoke<string>("xova_run", { command: cmd, cwd: "C:\\Xova", elevated: false });
@@ -101,6 +115,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [domainScores, setDomainScores] = useState<(number | null)[]>([]);
   const [ltmData,      setLtmData]      = useState<LtmData | null>(null);
   const [evalHistory,  setEvalHistory]  = useState<SelfEvalEntry[]>([]);
+  const [selfMods,     setSelfMods]     = useState<SelfModProposal[]>([]);
   const [dreamRunning, setDreamRunning] = useState(false);
   const [scanRunning,  setScanRunning]  = useState(false);
   const [loading,     setLoading]     = useState(true);
@@ -108,7 +123,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [newGoal,     setNewGoal]     = useState("");
   const [saving,      setSaving]      = useState(false);
   const [updatedAt,   setUpdatedAt]   = useState("");
-  const [view,        setView]        = useState<"active" | "all" | "proposals" | "dream">("active");
+  const [view,        setView]        = useState<"active" | "all" | "proposals" | "dream" | "mods">("active");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -162,6 +177,12 @@ export function GoalState({ onClose }: { onClose: () => void }) {
       const seRaw = await invoke<string>("xova_read_file", { path: SELF_EVAL_STORE });
       const seData = JSON.parse(seRaw) as { history?: SelfEvalEntry[] };
       setEvalHistory(seData.history ?? []);
+    } catch { /* ok */ }
+    // Load self-modifier proposals for mods view
+    try {
+      const smRaw = await invoke<string>("xova_read_file", { path: SELF_MOD_STORE });
+      const smData = JSON.parse(smRaw) as { proposals?: SelfModProposal[] };
+      setSelfMods((smData.proposals ?? []).slice().reverse()); // newest first
     } catch { /* ok */ }
     setLoading(false);
   }, []);
@@ -265,12 +286,12 @@ export function GoalState({ onClose }: { onClose: () => void }) {
           Goals{updatedAt ? ` · ${updatedAt}` : ""}
         </span>
         <div className="flex gap-1 ml-auto">
-          {(["active", "all", "proposals", "dream"] as const).map(v => (
+          {(["active", "all", "proposals", "dream", "mods"] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={`px-2 py-0.5 rounded border text-[9px] transition-colors ${
                 view === v ? "border-emerald-600 text-emerald-300 bg-emerald-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"
               }`}>
-              {v}{v === "proposals" && proposals.length > 0 ? ` (${proposals.length})` : ""}
+              {v}{v === "proposals" && proposals.length > 0 ? ` (${proposals.length})` : ""}{v === "mods" && selfMods.length > 0 ? ` (${selfMods.length})` : ""}
             </button>
           ))}
         </div>
@@ -524,7 +545,51 @@ export function GoalState({ onClose }: { onClose: () => void }) {
       )}
 
       {/* Goal list */}
-      {view !== "proposals" && view !== "dream" && (
+      {/* Self-modifier applied history */}
+      {view === "mods" && (
+        <div className="flex-1 overflow-y-auto">
+          {selfMods.length === 0 ? (
+            <div className="flex items-center justify-center h-full text-zinc-600 text-[10px]">no self-mod proposals on record</div>
+          ) : (
+            selfMods.map(m => {
+              const statusColor = m.status === "applied" ? "#34d399" : m.status === "rejected" ? "#f87171" : "#fbbf24";
+              const shortFile = m.file_path.replace(/^.*[\\/]/, "");
+              return (
+                <div key={m.id} className="border-b border-zinc-900 px-3 py-2.5 space-y-1 hover:bg-zinc-900/20">
+                  <div className="flex items-start gap-2">
+                    <span className="shrink-0 text-[8px] px-1 py-0.5 rounded border font-mono uppercase tracking-wider"
+                      style={{ color: statusColor, borderColor: statusColor + "55", backgroundColor: statusColor + "18" }}>
+                      {m.status}
+                    </span>
+                    <span className="text-zinc-200 text-[10px] leading-snug flex-1">{m.description}</span>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap text-[8px]">
+                    <span className="text-amber-500 font-mono">{shortFile}</span>
+                    <span className="text-zinc-600">by {m.proposer}</span>
+                    {m.sce88_pass !== undefined && (
+                      <span className={m.sce88_pass ? "text-emerald-600" : "text-red-600"}>
+                        SCE-88 {m.sce88_pass ? "✓" : "✗"} {m.sce88_coherence?.toFixed(2)}
+                      </span>
+                    )}
+                    {m.xova_approved !== undefined && (
+                      <span className={m.xova_approved ? "text-teal-600" : "text-zinc-600"}>
+                        xova {m.xova_approved ? "approved" : "rejected"}
+                      </span>
+                    )}
+                    <span className="text-zinc-700 ml-auto">{m.id}</span>
+                  </div>
+                  <div className="flex gap-3 text-[7px] text-zinc-600">
+                    <span>proposed {fmtDate(m.created_at)} {fmtTs(m.created_at)}</span>
+                    {m.applied_at && <span>applied {fmtDate(m.applied_at)} {fmtTs(m.applied_at)}</span>}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
+      {view !== "proposals" && view !== "dream" && view !== "mods" && (
       <div className="flex-1 overflow-y-auto">
         {displayed.map(goal => {
           const isActive = goal.id === store.active_goal;
