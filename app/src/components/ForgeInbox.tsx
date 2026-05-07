@@ -58,6 +58,8 @@ export function ForgeInbox({ onClose }: { onClose: () => void }) {
   const [updatedAt, setUpdatedAt] = useState("");
   const [tab, setTab]       = useState<"forge" | "hook" | "events">("hook");
   const [showOutbox, setShowOutbox] = useState(false);
+  const [hookDraft, setHookDraft] = useState("");
+  const [hookSending, setHookSending] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -107,6 +109,22 @@ export function ForgeInbox({ onClose }: { onClose: () => void }) {
 
     setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
   }, []);
+
+  const postToHook = useCallback(async () => {
+    const msg = hookDraft.trim();
+    if (!msg || hookSending) return;
+    setHookSending(true);
+    try {
+      let existing = "";
+      try { existing = await invoke<string>("xova_read_file", { path: HOOK_INBOX }); } catch { /* new file */ }
+      const entry = JSON.stringify({ ts: Date.now(), from: "adam", kind: "human", content: msg, priority: "normal" });
+      const updated = existing ? existing.trimEnd() + "\n" + entry + "\n" : entry + "\n";
+      await invoke("xova_write_file", { path: HOOK_INBOX, content: updated });
+      setHookDraft("");
+      await refresh();
+    } catch { /* silent */ }
+    setHookSending(false);
+  }, [hookDraft, hookSending, refresh]);
 
   useEffect(() => {
     refresh();
@@ -165,6 +183,23 @@ export function ForgeInbox({ onClose }: { onClose: () => void }) {
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Hook send input — adam → forge channel */}
+      {tab === "hook" && (
+        <div className="border-t border-zinc-800 px-2 py-1.5 shrink-0 flex gap-1">
+          <input
+            value={hookDraft}
+            onChange={e => setHookDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); postToHook(); } }}
+            placeholder="post to hook channel…"
+            className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-[9px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-purple-600 min-w-0"
+          />
+          <button onClick={postToHook} disabled={hookSending || !hookDraft.trim()}
+            className="px-2 py-1 rounded bg-purple-900/30 border border-purple-700 text-purple-300 text-[9px] hover:bg-purple-800/40 disabled:opacity-40 shrink-0">
+            {hookSending ? "…" : "post"}
+          </button>
         </div>
       )}
 
