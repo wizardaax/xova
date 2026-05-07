@@ -129,6 +129,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [ucbState,    setUcbState]    = useState<UcbEntry[]>([]);
   const [ucbReward,   setUcbReward]   = useState<UcbReward | null>(null);
   const [domainScores, setDomainScores] = useState<(number | null)[]>([]);
+  const [domainTs,     setDomainTs]     = useState<(number | null)[]>([]);
   const [ltmData,      setLtmData]      = useState<LtmData | null>(null);
   const [evalHistory,  setEvalHistory]  = useState<SelfEvalEntry[]>([]);
   const [selfMods,     setSelfMods]     = useState<SelfModProposal[]>([]);
@@ -184,7 +185,12 @@ export function GoalState({ onClose }: { onClose: () => void }) {
         }
         return typeof s.score === "number" ? s.score : null;
       });
+      const dTs = DOMAIN_SLOT_KEYS.map(key => {
+        const s = broker.slots?.[key] as DomainSlot | undefined;
+        return typeof s?.ts === "number" ? s.ts : null;
+      });
       setDomainScores(dScores);
+      setDomainTs(dTs);
       const rs = broker.slots?.["xova.repo_sync"] as RepoSyncSlot | undefined;
       if (rs?.ok) setRepoSlot(rs);
     } catch { /* broker may not have slots yet */ }
@@ -424,6 +430,9 @@ export function GoalState({ onClose }: { onClose: () => void }) {
           <div className="flex flex-col gap-0.5">
             {ucbState.map((u, i) => {
               const ds = domainScores[i] ?? null;
+              const dsTs = domainTs[i] ?? null;
+              const ageMin = dsTs !== null ? Math.round((Date.now() / 1000 - dsTs) / 60) : null;
+              const ageColor = ageMin === null ? "#52525b" : ageMin <= 5 ? "#34d399" : ageMin <= 30 ? "#fbbf24" : "#f87171";
               const dsColor = ds === null ? "#52525b"
                 : ds >= 0.8 ? "#34d399"
                 : ds >= 0.6 ? "#fbbf24"
@@ -434,6 +443,11 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                   <span className="text-zinc-500 text-[8px] w-[76px] shrink-0 truncate">{ROTATING_GOAL_NAMES[i] ?? i}</span>
                   <span className="text-violet-400 text-[8px] font-mono w-[32px] shrink-0">{u.q.toFixed(3)}</span>
                   <span className="text-zinc-700 text-[7px] w-[20px] shrink-0">n={u.n}</span>
+                  {ageMin !== null && (
+                    <span className="text-[7px] font-mono w-[22px] shrink-0" style={{ color: ageColor }}>
+                      {ageMin < 60 ? `${ageMin}m` : `${Math.round(ageMin / 60)}h`}
+                    </span>
+                  )}
                   <div className="flex items-center gap-1 ml-auto">
                     {ds !== null && (
                       <>
