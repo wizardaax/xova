@@ -32,6 +32,20 @@ MAX_PER_RUN     = 3
 MAX_PER_DAY     = 5
 OVERLAP_THRESH  = 0.40
 
+# Domain richness weights — higher = more worth exploring when under-indexed.
+# Domains not listed default to 1.0.
+_DOMAIN_RICHNESS: dict[str, float] = {
+    r"D:\github\wizardaax":              3.0,   # core research repos
+    r"C:\Xova":                          2.5,   # live AGI system
+    r"G:\My Drive":                      2.0,   # research notes / Drive papers
+    r"D:\Project_Hub":                   1.8,
+    r"D:\Old_OneDrive_Backup":           1.5,
+    r"D:\Documents":                     1.2,
+    r"C:\Users\adz_7\Documents":         1.2,
+    r"D:\adz_7":                         1.0,
+    r"D:\Downloads":                     0.8,
+}
+
 
 # ── state ─────────────────────────────────────────────────────────────────────
 
@@ -160,6 +174,14 @@ def _gaps_missed_keywords() -> list[str]:
     ]
 
 
+def _domain_richness(root: str) -> float:
+    """Return the importance weight for a corpus root path."""
+    for prefix, weight in _DOMAIN_RICHNESS.items():
+        if root.startswith(prefix):
+            return weight
+    return 1.0
+
+
 def _gaps_corpus_coverage() -> list[str]:
     try:
         with open(CORPUS_INDEX, encoding="utf-8") as fh:
@@ -175,11 +197,13 @@ def _gaps_corpus_coverage() -> list[str]:
         root = e.get("root", "unknown")
         counts[root] = counts.get(root, 0) + 1
     threshold = total * CORPUS_GAP_PCT
-    under = sorted([(r, c) for r, c in counts.items() if c < threshold], key=lambda x: x[1])
+    under = [(r, c) for r, c in counts.items() if c < threshold]
+    # Sort by richness desc, then count asc — high-value under-indexed domains first.
+    under.sort(key=lambda x: (-_domain_richness(x[0]), x[1]))
     return [
         f"[CURIOSITY] corpus gap — domain '{r}' has only {c} entries "
-        f"({c/total*100:.1f}% of {total}): expand knowledge base by "
-        f"indexing more content from '{r}'"
+        f"({c/total*100:.1f}% of {total}, richness={_domain_richness(r):.1f}): "
+        f"expand knowledge base by indexing more content from '{r}'"
         for r, c in under[:3]
     ]
 
