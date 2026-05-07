@@ -63,9 +63,11 @@ import { SharedFacts } from "./SharedFacts";
 import { ForgeNotes } from "./ForgeNotes";
 import { SelfMod } from "./SelfMod";
 import { AeonRunLog } from "./AeonRunLog";
+import { AgentRoster } from "./AgentRoster";
+import { ViolationsLog } from "./ViolationsLog";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog" | "agentrostr" | "violations" | "swarmdispatch";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -131,6 +133,8 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "forgenotes",  label: "Forge Notes",  emoji: "📝" },
   { id: "selfmod",     label: "Self-Mod",     emoji: "🔧" },
   { id: "aeonlog",     label: "AEON Log",     emoji: "🚀" },
+  { id: "agentrostr",  label: "Agent Roster", emoji: "🤖" },
+  { id: "violations",  label: "Violations",   emoji: "⛔" },
 ];
 
 interface WorkspaceDockProps {
@@ -259,6 +263,8 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "forgenotes"  && <ForgeNotes      onClose={() => onTab(null)} />}
             {activeTab === "selfmod"     && <SelfMod         onClose={() => onTab(null)} />}
             {activeTab === "aeonlog"     && <AeonRunLog      onClose={() => onTab(null)} />}
+            {activeTab === "agentrostr"  && <AgentRoster     onClose={() => onTab(null)} />}
+            {activeTab === "violations"  && <ViolationsLog   onClose={() => onTab(null)} />
           </div>
         </div>
       )}
