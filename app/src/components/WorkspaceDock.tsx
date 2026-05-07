@@ -84,9 +84,11 @@ import { ForgeOutbox } from "./ForgeOutbox";
 import { Reminders } from "./Reminders";
 import { AgentInboxes } from "./AgentInboxes";
 import { PhoneGateway } from "./PhoneGateway";
+import { PersonaOutbox } from "./PersonaOutbox";
+import { XovaChat } from "./XovaChat";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog" | "agentrostr" | "violations" | "swarmdispatch" | "ltmemory" | "selfevalstore" | "evoruns" | "phiucb" | "sysinfo" | "trashstats" | "meshfeed" | "goalproposals" | "coherenceinbox" | "standingfacts" | "forgerate" | "voiceuserinbox" | "sessionviewer" | "forgeevents" | "forgeoutbox" | "reminders" | "agentinboxes" | "phonegateway";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog" | "agentrostr" | "violations" | "swarmdispatch" | "ltmemory" | "selfevalstore" | "evoruns" | "phiucb" | "sysinfo" | "trashstats" | "meshfeed" | "goalproposals" | "coherenceinbox" | "standingfacts" | "forgerate" | "voiceuserinbox" | "sessionviewer" | "forgeevents" | "forgeoutbox" | "reminders" | "agentinboxes" | "phonegateway" | "personaoutbox" | "xovachat";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -173,6 +175,8 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "reminders",      label: "Reminders",   emoji: "⏰" },
   { id: "agentinboxes",   label: "Agnt Inbox",  emoji: "📨" },
   { id: "phonegateway",   label: "Phone GW",    emoji: "📶" },
+  { id: "personaoutbox", label: "Persona Out", emoji: "🎭" },
+  { id: "xovachat",      label: "Xova Chat",   emoji: "🗨" },
 ];
 
 interface WorkspaceDockProps {
@@ -322,6 +326,8 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "reminders"       && <Reminders       onClose={() => onTab(null)} />}
             {activeTab === "agentinboxes"    && <AgentInboxes    onClose={() => onTab(null)} />}
             {activeTab === "phonegateway"    && <PhoneGateway    onClose={() => onTab(null)} />}
+            {activeTab === "personaoutbox"  && <PersonaOutbox   onClose={() => onTab(null)} />}
+            {activeTab === "xovachat"       && <XovaChat        onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
