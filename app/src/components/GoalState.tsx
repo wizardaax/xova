@@ -144,6 +144,9 @@ export function GoalState({ onClose }: { onClose: () => void }) {
   const [saving,      setSaving]      = useState(false);
   const [updatedAt,   setUpdatedAt]   = useState("");
   const [view,        setView]        = useState<"active" | "all" | "proposals" | "dream" | "mods" | "repos">("active");
+  const [noteOpen,    setNoteOpen]    = useState<string | null>(null);  // goal id with open note input
+  const [noteText,    setNoteText]    = useState("");
+  const [noteSaving,  setNoteSaving]  = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -236,6 +239,19 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     } catch { /**/ }
     setSaving(false);
   }, [newGoal, refresh]);
+
+  const logNote = useCallback(async (id: string) => {
+    const note = noteText.trim();
+    if (!note) return;
+    setNoteSaving(true);
+    try {
+      await xovaRun(`${GOAL_MGR} --action progress --id ${id} --note "${note.replace(/"/g, '\\"')}" --agent forge`);
+      setNoteOpen(null);
+      setNoteText("");
+      await refresh();
+    } catch { /**/ }
+    setNoteSaving(false);
+  }, [noteText, refresh]);
 
   const activate = useCallback(async (id: string) => {
     await xovaRun(`${GOAL_MGR} --action activate --id ${id}`);
@@ -804,7 +820,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                 );
               })()}
               {/* Action buttons */}
-              <div className="flex gap-1">
+              <div className="flex gap-1 flex-wrap">
                 {goal.status !== "active" && (
                   <button onClick={() => activate(goal.id)}
                     className="text-[8px] px-1.5 py-0.5 rounded border border-emerald-700 text-emerald-400 hover:bg-emerald-900/30">
@@ -829,7 +845,29 @@ export function GoalState({ onClose }: { onClose: () => void }) {
                     complete
                   </button>
                 )}
+                <button
+                  onClick={() => { setNoteOpen(noteOpen === goal.id ? null : goal.id); setNoteText(""); }}
+                  className="text-[8px] px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-500 hover:text-zinc-300 ml-auto">
+                  + note
+                </button>
               </div>
+              {/* Inline note input */}
+              {noteOpen === goal.id && (
+                <div className="flex gap-1 mt-0.5">
+                  <input
+                    autoFocus
+                    value={noteText}
+                    onChange={e => setNoteText(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") logNote(goal.id); if (e.key === "Escape") setNoteOpen(null); }}
+                    placeholder="progress note…"
+                    className="flex-1 bg-zinc-900 border border-zinc-700 rounded px-2 py-0.5 text-[9px] text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-zinc-500 min-w-0"
+                  />
+                  <button onClick={() => logNote(goal.id)} disabled={noteSaving || !noteText.trim()}
+                    className="px-2 py-0.5 rounded bg-zinc-800 border border-zinc-700 text-zinc-400 text-[8px] hover:bg-zinc-700/40 disabled:opacity-40 shrink-0">
+                    {noteSaving ? "…" : "log"}
+                  </button>
+                </div>
+              )}
             </div>
           );
         })}
