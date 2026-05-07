@@ -165,11 +165,13 @@ CORPUS_SIGNER       = r"C:\Xova\plugins\corpus_signer.py"
 CI_HEALTH           = r"C:\Xova\plugins\ci_health.py"
 LUCAS_PHASE         = r"C:\Xova\plugins\lucas_phase.py"
 FIELD_WEAVE         = r"C:\Xova\plugins\field_weave.py"
+TERNARY_EVAL        = r"C:\Xova\plugins\ternary_eval.py"
 SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
 CI_EVERY_N          = 30   # CI health scan every 30 cycles (~30 min)
 LUCAS_EVERY_N       = 25   # Lucas phase analysis every 25 cycles (~25 min)
 WEAVE_EVERY_N       = 35   # field weave phi-spiral every 35 cycles (~35 min)
+TERNARY_EVERY_N     = 15   # ternary constraint evaluation every 15 cycles (~15 min)
 DREAM_EVERY_H       = 6    # dream consolidation every N hours
 CIPHER_EVERY_N      = 50   # cipher agent status every 50 cycles (~50 min)
 FEDERATION_EVERY_N  = 60   # cross-AI fact federation sync every 60 cycles (~1 hr)
@@ -307,6 +309,18 @@ def _run_field_weave() -> None:
         )
     except Exception as exc:
         _log(f"field weave error: {exc}")
+
+
+def _run_ternary_eval() -> None:
+    """Run ternary_eval.py in background — SCE-88 constraint gate analysis."""
+    try:
+        subprocess.Popen(
+            [sys.executable, TERNARY_EVAL, "--action", "run"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"ternary eval error: {exc}")
 
 
 def _run_dream_consolidation() -> None:
@@ -1147,8 +1161,9 @@ def main() -> None:
                 # Base coherence reward; will be blended with self-eval below (Round 109)
                 _coh_reward = max(0.0, min(1.0, result.average_coherence - 0.1 * getattr(result, "gated_count", 0)))
                 _eval_score_for_ucb: float = 0.0
-                _last_lucas_score:   float | None = None  # Sprint 7: Lucas phase → UCB
-                _last_weave_score:   float | None = None  # Sprint 8: field weave → UCB
+                _last_lucas_score:    float | None = None  # Sprint 7: Lucas phase → UCB
+                _last_weave_score:    float | None = None  # Sprint 8: field weave → UCB
+                _last_ternary_score:  float | None = None  # Sprint 9: ternary eval → UCB
 
                 # SCE-88: publish cycle coherence to context_broker for advisory gate
                 _write_context_slot("xova.sce88_status", {
@@ -1251,6 +1266,23 @@ def main() -> None:
                             )
                     except Exception:
                         pass
+                    # Ternary eval: SCE-88 gate health + constraint balance
+                    try:
+                        with open(CONTEXT_BROKER, encoding="utf-8") as _te:
+                            _te_data = json.load(_te)
+                        _te_slot  = _te_data.get("slots", {}).get("xova.ternary_eval", {})
+                        _te_score = _te_slot.get("score")
+                        _te_gates = _te_slot.get("affirm", 0)
+                        _te_bal   = _te_slot.get("ternary_balance")
+                        if _te_score is not None:
+                            _last_ternary_score = _te_score
+                            _goal_kw.append(
+                                f"ternary logic evaluation complete · {_te_gates}/4 gates affirm"
+                                f" · constraint guardian balance {_te_bal:.3f}"
+                                f" · SCE-88 health {_te_score:.3f}"
+                            )
+                    except Exception:
+                        pass
                     # Field weave: phi-spiral coherence + golden angle cross-validation
                     _last_weave_score: float | None = None
                     try:
@@ -1293,6 +1325,10 @@ def main() -> None:
                     reward = (0.45 * _coh_reward
                               + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
                               + 0.25 * _last_lucas_score)
+                elif goal_idx == 5 and _last_ternary_score is not None:
+                    reward = (0.45 * _coh_reward
+                              + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
+                              + 0.25 * _last_ternary_score)
                 elif goal_idx == 6 and _last_weave_score is not None:
                     reward = (0.45 * _coh_reward
                               + 0.30 * (_eval_score_for_ucb if _eval_score_for_ucb > 0 else _coh_reward)
@@ -1350,6 +1386,10 @@ def main() -> None:
         # Field weave: phi-spiral coherence every WEAVE_EVERY_N cycles (~35 min)
         if cycle_num % WEAVE_EVERY_N == 0:
             _run_field_weave()
+
+        # Ternary eval: SCE-88 constraint gate check every TERNARY_EVERY_N cycles (~15 min)
+        if cycle_num % TERNARY_EVERY_N == 0:
+            _run_ternary_eval()
 
         # Dream consolidation: distil 24h of data every DREAM_EVERY_H hours
         _run_dream_consolidation()
