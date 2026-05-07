@@ -61,9 +61,11 @@ import { GoalState } from "./GoalState";
 import { PersonaPanel } from "./PersonaPanel";
 import { SharedFacts } from "./SharedFacts";
 import { ForgeNotes } from "./ForgeNotes";
+import { SelfMod } from "./SelfMod";
+import { AeonRunLog } from "./AeonRunLog";
 import { cn } from "@/lib/utils";
 
-type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes";
+type Tab = "camera" | "feed" | "phones" | "memory" | "navigator" | "search" | "agents" | "repos" | "metrics" | "events" | "daemons" | "dispatch" | "ablation" | "evolution" | "sessions" | "editor" | "repl" | "selfeval" | "notes" | "ternary" | "flags" | "sce88" | "shell" | "corpus" | "coherence" | "heatmap" | "voicememos" | "absorb" | "exports" | "meshctl" | "swarm" | "aeon" | "field" | "chatlog" | "calibration" | "cycles" | "smsarchive" | "phasehistory" | "memkeys" | "federation" | "forgeinbox" | "testrunner" | "sentinellog" | "voiceinbox" | "jarvishealth" | "agiaudit" | "agentboard" | "riemann" | "constraintguard" | "gitlog" | "evostages" | "drivematrix" | "security" | "browser" | "memgraph" | "ctxbroker" | "acttrace" | "goalstate" | "persona" | "sharedfacts" | "forgenotes" | "selfmod" | "aeonlog";
 
 const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "camera",      label: "Camera",      emoji: "📷" },
@@ -127,6 +129,8 @@ const TABS: { id: Tab; label: string; emoji: string }[] = [
   { id: "persona",     label: "Persona",      emoji: "🗣" },
   { id: "sharedfacts", label: "Shared Facts", emoji: "🔗" },
   { id: "forgenotes",  label: "Forge Notes",  emoji: "📝" },
+  { id: "selfmod",     label: "Self-Mod",     emoji: "🔧" },
+  { id: "aeonlog",     label: "AEON Log",     emoji: "🚀" },
 ];
 
 interface WorkspaceDockProps {
@@ -253,6 +257,8 @@ export function WorkspaceDock({ activeTab, onTab }: WorkspaceDockProps) {
             {activeTab === "persona"     && <PersonaPanel    onClose={() => onTab(null)} />}
             {activeTab === "sharedfacts" && <SharedFacts     onClose={() => onTab(null)} />}
             {activeTab === "forgenotes"  && <ForgeNotes      onClose={() => onTab(null)} />}
+            {activeTab === "selfmod"     && <SelfMod         onClose={() => onTab(null)} />}
+            {activeTab === "aeonlog"     && <AeonRunLog      onClose={() => onTab(null)} />}
           </div>
         </div>
       )}
