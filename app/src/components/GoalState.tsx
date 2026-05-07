@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
-const GOAL_STORE  = "C:\\Xova\\memory\\goal_store.json";
-const GOAL_MGR    = `python "C:\\Xova\\plugins\\goal_manager.py"`;
+const GOAL_STORE      = "C:\\Xova\\memory\\goal_store.json";
+const PROPOSAL_STORE  = "C:\\Xova\\memory\\goal_proposals.json";
+const UCB_STORE       = "C:\\Xova\\memory\\phi_ucb_state.json";
+const BROKER_PATH     = "C:\\Xova\\memory\\context_broker.json";
+const GOAL_MGR        = `python "C:\\Xova\\plugins\\goal_manager.py"`;
+const GOAL_PROPOSER   = `python "C:\\Xova\\plugins\\goal_proposer.py"`;
 
 interface ProgressEntry {
   ts:        number;
@@ -24,6 +28,26 @@ interface Goal {
 interface GoalStore {
   active_goal: string | null;
   goals: Record<string, Goal>;
+}
+interface Proposal {
+  id:        string;
+  text:      string;
+  keyword:   string;
+  domain:    string;
+  parent_id: string;
+  status:    "pending" | "accepted" | "rejected";
+  ts:        number;
+  goal_id?:  string;
+}
+interface UcbEntry { q: number; n: number; }
+interface UcbReward {
+  cycle:      number;
+  goal_idx:   number;
+  goal:       string;
+  coh_reward: number;
+  eval_score: number;
+  blended:    number;
+  ts:         number;
 }
 
 async function xovaRun(cmd: string): Promise<string> {
@@ -52,12 +76,16 @@ const STATUS_STYLE: Record<string, string> = {
 };
 
 export function GoalState({ onClose }: { onClose: () => void }) {
-  const [store,     setStore]     = useState<GoalStore | null>(null);
-  const [loading,   setLoading]   = useState(true);
-  const [newGoal,   setNewGoal]   = useState("");
-  const [saving,    setSaving]    = useState(false);
-  const [updatedAt, setUpdatedAt] = useState("");
-  const [view,      setView]      = useState<"active" | "all">("active");
+  const [store,       setStore]       = useState<GoalStore | null>(null);
+  const [proposals,   setProposals]   = useState<Proposal[]>([]);
+  const [ucbState,    setUcbState]    = useState<UcbEntry[]>([]);
+  const [ucbReward,   setUcbReward]   = useState<UcbReward | null>(null);
+  const [loading,     setLoading]     = useState(true);
+  const [proposing,   setProposing]   = useState(false);
+  const [newGoal,     setNewGoal]     = useState("");
+  const [saving,      setSaving]      = useState(false);
+  const [updatedAt,   setUpdatedAt]   = useState("");
+  const [view,        setView]        = useState<"active" | "all" | "proposals">("active");
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -68,6 +96,25 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     } catch {
       setStore({ active_goal: null, goals: {} });
     }
+    // Load proposals
+    try {
+      const pRaw = await invoke<string>("xova_read_file", { path: PROPOSAL_STORE });
+      const pData = JSON.parse(pRaw) as { proposals: Proposal[] };
+      const pending = (pData.proposals ?? []).filter(p => p.status === "pending");
+      setProposals(pending);
+    } catch { setProposals([]); }
+    // Load UCB state
+    try {
+      const uRaw = await invoke<string>("xova_read_file", { path: UCB_STORE });
+      setUcbState(JSON.parse(uRaw) as UcbEntry[]);
+    } catch { setUcbState([]); }
+    // Load UCB last reward from context_broker
+    try {
+      const bRaw = await invoke<string>("xova_read_file", { path: BROKER_PATH });
+      const broker = JSON.parse(bRaw) as { slots: Record<string, unknown> };
+      const slot = broker.slots?.["xova.ucb_last_reward"] as UcbReward | undefined;
+      if (slot?.cycle) setUcbReward(slot);
+    } catch { /* broker may not have slot yet */ }
     setLoading(false);
   }, []);
 
@@ -104,17 +151,44 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     await refresh();
   }, [refresh]);
 
+  const propose = useCallback(async () => {
+    setProposing(true);
+    try {
+      await xovaRun(`${GOAL_PROPOSER} --action propose`);
+      setView("proposals");
+      await refresh();
+    } catch { /**/ }
+    setProposing(false);
+  }, [refresh]);
+
+  const acceptProposal = useCallback(async (propId: string) => {
+    await xovaRun(`${GOAL_PROPOSER} --action accept --id ${propId}`);
+    await refresh();
+  }, [refresh]);
+
+  const rejectProposal = useCallback(async (propId: string) => {
+    await xovaRun(`${GOAL_PROPOSER} --action reject --id ${propId}`);
+    await refresh();
+  }, [refresh]);
+
   if (!store) return (
     <div className="flex-1 flex items-center justify-center text-zinc-600 font-mono text-[11px]">
       {loading ? "loading…" : "no goal store"}
     </div>
   );
 
+  const ROTATING_GOAL_NAMES = [
+    "aeon thrust", "CI health", "repo sync", "Lucas phase",
+    "corpus recall", "ternary logic", "field weave",
+  ];
+
   const goals     = Object.values(store.goals);
   const active    = store.active_goal ? store.goals[store.active_goal] : null;
   const displayed = view === "active"
     ? goals.filter(g => g.status === "active")
-    : goals;
+    : view === "all"
+    ? goals
+    : [];
   displayed.sort((a, b) => b.priority - a.priority || b.updated_at - a.updated_at);
 
   return (
@@ -126,15 +200,20 @@ export function GoalState({ onClose }: { onClose: () => void }) {
           Goals{updatedAt ? ` · ${updatedAt}` : ""}
         </span>
         <div className="flex gap-1 ml-auto">
-          {(["active", "all"] as const).map(v => (
+          {(["active", "all", "proposals"] as const).map(v => (
             <button key={v} onClick={() => setView(v)}
               className={`px-2 py-0.5 rounded border text-[9px] transition-colors ${
                 view === v ? "border-emerald-600 text-emerald-300 bg-emerald-950/30" : "border-zinc-700 text-zinc-500 hover:text-zinc-300"
               }`}>
-              {v}
+              {v}{v === "proposals" && proposals.length > 0 ? ` (${proposals.length})` : ""}
             </button>
           ))}
         </div>
+        <button onClick={propose} disabled={proposing}
+          title="Generate sub-goal proposals from self-eval gaps"
+          className="px-2 py-0.5 rounded border border-violet-700 text-violet-400 text-[9px] hover:bg-violet-900/30 disabled:opacity-40">
+          {proposing ? "…" : "propose"}
+        </button>
         <button onClick={refresh} disabled={loading} className="text-zinc-600 hover:text-zinc-300 disabled:opacity-40">↻</button>
         <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">✕</button>
       </div>
@@ -169,7 +248,73 @@ export function GoalState({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
+      {/* UCB reward strip — shown when data is available */}
+      {ucbReward && (
+        <div className="px-3 py-1.5 border-b border-zinc-800 shrink-0 bg-violet-950/10">
+          <div className="flex items-center gap-3 text-[9px] flex-wrap">
+            <span className="uppercase tracking-wider text-violet-500">ucb · cycle {ucbReward.cycle}</span>
+            <span className="text-zinc-500">coh <span className="text-zinc-300">{ucbReward.coh_reward.toFixed(3)}</span></span>
+            <span className="text-zinc-500">eval <span className="text-zinc-300">{ucbReward.eval_score.toFixed(3)}</span></span>
+            <span className="text-violet-400 font-mono">blend {ucbReward.blended.toFixed(3)}</span>
+            <span className="text-zinc-600 truncate max-w-[160px]">{ucbReward.goal}</span>
+          </div>
+        </div>
+      )}
+
+      {/* UCB goal weights — shown when ucbState loaded */}
+      {ucbState.length > 0 && (view === "active" || view === "all") && (
+        <div className="px-3 py-1.5 border-b border-zinc-800 shrink-0">
+          <div className="text-[8px] uppercase tracking-wider text-zinc-600 mb-1">φ-ucb goal weights</div>
+          <div className="flex flex-wrap gap-1">
+            {ucbState.map((u, i) => (
+              <div key={i} className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800">
+                <span className="text-zinc-500 text-[8px]">{ROTATING_GOAL_NAMES[i] ?? i}</span>
+                <span className="text-violet-400 text-[8px] font-mono">{u.q.toFixed(3)}</span>
+                <span className="text-zinc-600 text-[8px]">n={u.n}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Proposals view */}
+      {view === "proposals" && (
+        <div className="flex-1 overflow-y-auto">
+          {proposals.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-zinc-600 py-8">
+              <span className="text-[11px]">no pending proposals</span>
+              <button onClick={propose} disabled={proposing}
+                className="px-3 py-1 rounded border border-violet-700 text-violet-400 text-[10px] hover:bg-violet-900/30 disabled:opacity-40">
+                {proposing ? "proposing…" : "generate proposals"}
+              </button>
+            </div>
+          ) : (
+            proposals.map(p => (
+              <div key={p.id} className="border-b border-zinc-900 px-3 py-2 space-y-1 hover:bg-zinc-900/20">
+                <div className="text-zinc-200 text-[10px] leading-snug">{p.text}</div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-violet-500 text-[8px] px-1 rounded border border-violet-800">{p.keyword}</span>
+                  <span className="text-zinc-600 text-[8px]">domain: {p.domain}</span>
+                  <span className="text-zinc-600 text-[8px]">{p.id}</span>
+                </div>
+                <div className="flex gap-1">
+                  <button onClick={() => acceptProposal(p.id)}
+                    className="text-[8px] px-1.5 py-0.5 rounded border border-emerald-700 text-emerald-400 hover:bg-emerald-900/30">
+                    accept
+                  </button>
+                  <button onClick={() => rejectProposal(p.id)}
+                    className="text-[8px] px-1.5 py-0.5 rounded border border-zinc-700 text-zinc-500 hover:bg-zinc-800/30">
+                    reject
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
       {/* Goal list */}
+      {view !== "proposals" && (
       <div className="flex-1 overflow-y-auto">
         {displayed.map(goal => {
           const isActive = goal.id === store.active_goal;
@@ -223,6 +368,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
           <div className="flex-1 flex items-center justify-center text-zinc-600 py-8">no goals</div>
         )}
       </div>
+      )}
 
       {/* New goal input */}
       <div className="border-t border-zinc-800 p-2 shrink-0 flex gap-1">

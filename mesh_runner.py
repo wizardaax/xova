@@ -169,6 +169,8 @@ CIPHER_EVERY_N      = 50   # cipher agent status every 50 cycles (~50 min)
 FEDERATION_EVERY_N  = 60   # cross-AI fact federation sync every 60 cycles (~1 hr)
 STUCK_EVERY_N       = 10   # stuck-goal executor every 10 cycles (~10 min)
 SIGNING_EVERY_N     = 120  # corpus RSA signing every 120 cycles (~2 hr) — only signs new entries
+GOAL_PROPOSER       = r"C:\Xova\plugins\goal_proposer.py"
+PROPOSE_EVERY_N     = 200  # goal proposal every 200 cycles (~3 hr) when no sub-goals active
 _last_dream_ts: float = 0.0
 
 
@@ -323,6 +325,35 @@ def _run_corpus_signing() -> None:
         _log("corpus_signer: sign triggered")
     except Exception as exc:
         _log(f"corpus_signer error: {exc}")
+
+
+def _run_goal_proposer(master_goal_id: str) -> None:
+    """Round 110: propose new sub-goals based on self-eval gaps when master goal has none active."""
+    if not os.path.exists(GOAL_PROPOSER):
+        return
+    try:
+        # Check if sub-goals already exist (avoid redundant proposals)
+        store: dict = {}
+        try:
+            with open(GOAL_STORE, encoding="utf-8") as fh:
+                store = json.load(fh)
+        except Exception:
+            pass
+        active_subs = [
+            g for g in store.get("goals", {}).values()
+            if g.get("parent") == master_goal_id and g.get("status") in ("active", "paused")
+        ]
+        if active_subs:
+            return  # sub-goals still in flight
+        subprocess.Popen(
+            [sys.executable, GOAL_PROPOSER, "--action", "propose", "--apply",
+             "--parent", master_goal_id],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        _log(f"goal_proposer: sub-goal generation triggered for {master_goal_id}")
+    except Exception as exc:
+        _log(f"goal_proposer error: {exc}")
 
 
 def _run_self_eval(output: str, goal: str, goal_id: str, agent: str = "mesh") -> float:
@@ -1161,6 +1192,11 @@ def main() -> None:
         # Round 108: RSA-2048 corpus signing — sign any new manual entries every 2 hr
         if cycle_num % SIGNING_EVERY_N == 0:
             _run_corpus_signing()
+
+        # Round 110: dynamic sub-goal proposal — fires every PROPOSE_EVERY_N cycles
+        # when master goal has no active sub-goals (gap-driven, self-eval informed)
+        if cycle_num % PROPOSE_EVERY_N == 0 and active_goal_id:
+            _run_goal_proposer(active_goal_id)
 
         time.sleep(CYCLE_INTERVAL)
 
