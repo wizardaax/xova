@@ -8,6 +8,7 @@ const CMD_WEAVE    = `python "C:\\Xova\\plugins\\field_weave.py" --action run`;
 const CMD_TERNARY  = `python "C:\\Xova\\plugins\\ternary_eval.py" --action run`;
 const CMD_LUCAS    = `python "C:\\Xova\\plugins\\lucas_phase.py" --action run`;
 const CMD_CORPUS   = `python "C:\\Xova\\plugins\\corpus_recall.py" --action run`;
+const CMD_SCAN_ALL = `python "C:\\Xova\\plugins\\domain_scan.py"`;
 const RUN_LOG_PATH = "C:\\Xova\\memory\\aeon_run_log.jsonl";
 const BROKER_PATH  = "C:\\Xova\\memory\\context_broker.json";
 const W = 360, H = 100, PAD = { t: 6, r: 6, b: 18, l: 6 };
@@ -55,6 +56,7 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
   const [lucasRunning, setLucasRunning] = useState(false);
   const [corpusSlot,  setCorpusSlot]  = useState<CorpusSlot | null>(null);
   const [corpusRunning, setCorpusRunning] = useState(false);
+  const [scanRunning,   setScanRunning]   = useState(false);
   const [err,        setErr]        = useState<string | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [sweeping,   setSweeping]   = useState(false);
@@ -143,6 +145,14 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
     setCorpusRunning(false);
   }, []);
 
+  const runScanAll = useCallback(async () => {
+    setScanRunning(true);
+    try {
+      await xovaRun(CMD_SCAN_ALL);
+      setTimeout(() => { refresh(); setScanRunning(false); }, 35_000);
+    } catch { setScanRunning(false); }
+  }, [refresh]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
@@ -215,6 +225,11 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
+        <button onClick={runScanAll} disabled={scanRunning}
+          title="Launch all 7 domain plugins — auto-refreshes in 35s"
+          className="px-2 py-0.5 rounded border border-teal-700 text-teal-400 text-[8px] hover:bg-teal-900/30 disabled:opacity-40">
+          {scanRunning ? "scanning…" : "scan"}
+        </button>
         <button onClick={refresh} disabled={loading} className="text-zinc-600 hover:text-zinc-300 disabled:opacity-40 text-[10px]">↻</button>
         <button onClick={onClose} className="text-zinc-600 hover:text-zinc-300">✕</button>
       </div>
