@@ -55,6 +55,11 @@ OLLAMA_LOCK_FILE     = r"C:\Xova\memory\ollama.lock"
 OLLAMA_LOCK_TIMEOUT  = 30           # seconds — give up and skip if Ollama is busy this long
 OLLAMA_LOCK_POLL     = 0.25         # seconds between lock-acquire polls
 
+PLUGINS_DIR          = r"C:\Xova\plugins"
+CONTEXT_BROKER_PY    = r"C:\Xova\plugins\context_broker.py"
+CORPUS_INDEX         = r"C:\Xova\memory\corpus_index.json"
+VIOLATIONS_LOG       = r"C:\Xova\memory\sentinel_violations.jsonl"
+
 FORGE_EVENTS         = r"C:\Xova\memory\forge_events.jsonl"
 MESH_FEED            = r"C:\Xova\memory\mesh_feed.jsonl"
 VOICE_INBOX          = r"C:\Xova\memory\voice_inbox.json"
@@ -670,12 +675,134 @@ def _run_cycle() -> None:
     _log(f"cycle {_cycle_count} complete")
 
 
+def _broker_write(key: str, value: object, tags: list) -> None:
+    """Write a slot to context_broker via subprocess (non-blocking, best-effort)."""
+    try:
+        subprocess.run(
+            [sys.executable, CONTEXT_BROKER_PY,
+             "--action", "set", "--key", key,
+             "--value", json.dumps(value, ensure_ascii=False),
+             "--agent", "absorb", "--ttl", "0",
+             "--tags"] + tags,
+            capture_output=True, timeout=8, creationflags=NO_WIN,
+        )
+    except Exception:
+        pass
+
+
+def _broker_read() -> dict:
+    try:
+        with open(r"C:\Xova\memory\context_broker.json", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _slot_val(broker: dict, key: str):
+    slot = broker.get("slots", {}).get(key, {})
+    if isinstance(slot, dict) and "value" in slot:
+        return slot["value"]
+    return slot if slot else None
+
+
+def _publish_signals() -> None:
+    """Call all 7 agent diagnostic functions and publish results to context_broker."""
+    import importlib.util as _ilu
+
+    def _load(name: str):
+        path = os.path.join(PLUGINS_DIR, name)
+        spec = _ilu.spec_from_file_location(name[:-3], path)
+        mod  = _ilu.module_from_spec(spec)  # type: ignore[arg-type]
+        spec.loader.exec_module(mod)         # type: ignore[union-attr]
+        return mod
+
+    broker = _broker_read()
+    tags   = ["absorb", "signals"]
+
+    # ── coherence: phi-weighted MA + trend ──────────────────────────────────
+    try:
+        last_cycles = _slot_val(broker, "agents.last_cycles") or []
+        cohs = [c.get("avg_coherence", 0) for c in last_cycles if isinstance(c, dict)]
+        if cohs:
+            rff = _load("rff_score.py")
+            ma  = rff.phi_weighted_ma(cohs)
+            trend = rff.coherence_trend(cohs)
+            _broker_write("agents.coherence_ma",    {"ma": ma, "n": len(cohs)}, tags)
+            _broker_write("agents.coherence_trend", trend, tags)
+            _log(f"signals: coherence ma={ma:.4f} trend={trend:.4f}")
+    except Exception as e:
+        _log(f"signals: coherence error: {e}")
+
+    # ── phase drift ──────────────────────────────────────────────────────────
+    try:
+        ratios = _slot_val(broker, "agents.phase_ratios") or []
+        if ratios:
+            lp  = _load("lucas_phase.py")
+            out = lp.phase_drift_detect(ratios)
+            _broker_write("agents.phase_drift", out, tags)
+            _log(f"signals: phase drift={out.get('drift_magnitude', 0):.6f} drifting={out.get('is_drifting')}")
+    except Exception as e:
+        _log(f"signals: phase error: {e}")
+
+    # ── field golden angle ───────────────────────────────────────────────────
+    try:
+        fw_data = _slot_val(broker, "xova.field_weave") or {}
+        deg = fw_data.get("golden_deg") if isinstance(fw_data, dict) else None
+        if deg is not None:
+            fw  = _load("field_weave.py")
+            out = fw.golden_angle_drift_alert(float(deg))
+            _broker_write("agents.field_drift", out, tags)
+            _log(f"signals: field drift={out.get('drift_deg', 0):.6f} alert={out.get('is_alert')}")
+    except Exception as e:
+        _log(f"signals: field error: {e}")
+
+    # ── sentinel violation rate ──────────────────────────────────────────────
+    try:
+        sg  = _load("sce88_gate.py")
+        out = sg.violation_rate(VIOLATIONS_LOG)
+        _broker_write("agents.violation_rate", out, tags)
+        _log(f"signals: violations rate={out.get('rate_per_hour', 0):.2f}/hr escalating={out.get('is_escalating')}")
+    except Exception as e:
+        _log(f"signals: sentinel error: {e}")
+
+    # ── memory slot health ───────────────────────────────────────────────────
+    try:
+        cb  = _load("context_broker.py")
+        out = cb.slot_health_score(r"C:\Xova\memory\context_broker.json")
+        _broker_write("agents.slot_health", out, tags)
+        _log(f"signals: slot health={out.get('score', 0):.4f} stale={out.get('stale_count', 0)}")
+    except Exception as e:
+        _log(f"signals: memory error: {e}")
+
+    # ── corpus knowledge gap ─────────────────────────────────────────────────
+    try:
+        cr  = _load("corpus_recall.py")
+        out = cr.knowledge_gap_score(CORPUS_INDEX)
+        _broker_write("agents.knowledge_gap", {"overall": out.get("overall_gap"), "weakest": out.get("weakest_domain")}, tags)
+        _log(f"signals: corpus gap={out.get('overall_gap', 0):.4f} weakest={out.get('weakest_domain')}")
+    except Exception as e:
+        _log(f"signals: corpus error: {e}")
+
+    # ── repo divergence ──────────────────────────────────────────────────────
+    try:
+        ci_data = _slot_val(broker, "xova.ci_health")
+        repos   = ci_data.get("repos", []) if isinstance(ci_data, dict) else []
+        if repos:
+            ci  = _load("ci_health.py")
+            out = ci.repo_divergence_score(repos)
+            _broker_write("agents.repo_divergence", out, tags)
+            _log(f"signals: repo divergence={out.get('score', 0):.4f} critical={out.get('is_critical')}")
+    except Exception as e:
+        _log(f"signals: repo error: {e}")
+
+
 def main() -> None:
     _log("absorb_loop started")
     while True:
         try:
             _run_cycle()
             _update_board()
+            _publish_signals()
         except Exception as exc:
             _log(f"cycle error: {exc}")
         time.sleep(POLL_SEC)
