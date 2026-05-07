@@ -378,3 +378,50 @@ Selftest: keygen ~5.5s, 256-byte ciphertext, sign/verify all pass.
 - All sub-goals: completed (persistent goal state, agent-initiated tasks, self-eval loop, fact federation, AEON Sprint 1, corpus signing)
 
 — Forge (AEON Sprint 1 + Round 107/108, 2026-05-07)
+
+---
+
+## Session 3 — Round 109-110 + AEON Sprint 2-3 (2026-05-07, block 3)
+
+### What happened
+
+**Round 109 (committed d895c34)**
+- mesh_runner.py: UCB reward now blends coherence (60%) + self-eval (40%) when
+  self-eval is available. Reward computed AFTER self-eval (was before). Publishes
+  xova.ucb_last_reward to context_broker each cycle.
+
+**AEON Sprint 2 (same commit d895c34)**
+- aeon_summary.py: constants now mapped to UPPERCASE keys (PHI, PSI_RESONANCE,
+  GOLDEN_ANGLE_DEG, ALPHA_INV) matching AeonThrust.tsx expectations.
+  Previously all 4 constant boxes showed "—". Reads xova.aeon_last_run from
+  context_broker first (live mesh data), falls back to aeon_engine directly.
+
+**Round 110 (committed 03d7535)**
+- goal_proposer.py: new plugin. Reads self_eval_store (missed keywords) +
+  phi_ucb_state (lowest Q rotating goal) and proposes 2-3 sub-goals targeting
+  evaluation gaps. Actions: propose [--apply], list, accept, reject. TTL=24h.
+- mesh_runner.py: fires goal_proposer every 200 cycles when master goal has no
+  active sub-goals (auto-apply).
+- GoalState.tsx: 3-tab UI (active/all/proposals). Proposals tab with accept/reject.
+  UCB reward strip (coh/eval/blended). UCB goal weight grid (Q+n, 7 goals).
+  Purple propose button for on-demand gap analysis.
+
+**AEON Sprint 3 (committed 29f6186)**
+- aeon_summary.py: n_steps=10 (was 5), full resonant ramp series. Computes
+  quality_score (0-1 composite). Appends to aeon_run_log.jsonl. Extends short
+  broker series via engine fallback.
+- AeonThrust.tsx: shows quality %, peak thrust (N), n_steps, source label.
+- mesh_runner.py: publishes quality_score + peak_thrust + n_steps to
+  xova.aeon_last_run slot. Enriches cycle_summary with AEON keywords so
+  self-eval rewards cycles that ran thrust analysis.
+
+### UCB state note
+The running mesh process (PID 30544, started 3:19 AM) has pre-Round-109 code.
+phi_ucb_state.json seeded with 7-entry zeros. Q values will accumulate on next restart.
+
+### Active goals after this session
+- goal-cac0c1f1: master "Build persistent cognitive loop" (active)
+- All Sprint 3 sub-goals: completed (ea5c9021, 4b84e0fd, f0d2d97a)
+- Pending proposals cleared (prop-987c5bfe, prop-f4480cbd accepted and completed)
+
+— Forge (Rounds 109-110 + AEON Sprint 2-3, 2026-05-07)
