@@ -74,8 +74,11 @@ GOAL_MANAGER      = r"C:\Xova\plugins\goal_manager.py"
 GOAL_STORE        = r"C:\Xova\memory\goal_store.json"
 SELF_EVAL         = r"C:\Xova\plugins\self_eval.py"
 SELF_EVAL_STORE   = r"C:\Xova\memory\self_eval_store.json"
+TASK_INITIATOR    = r"C:\Xova\plugins\task_initiator.py"
+SCAN_EVERY_N      = 5  # run task_initiator scan every N forge replies
 
 _call_timestamps:    list[float] = []  # wall-time of recent claude --print calls
+_forge_reply_count: int = 0            # counts replies for task_initiator scan cadence
 _last_inbox_ts:      int = 0
 _last_voice_ts:      int = 0
 _last_forge_voice_ts: int = 0        # AUDIT-2-006: separate cursor for forge-bound relay dedup
@@ -367,6 +370,18 @@ def _write_goal_progress(note: str) -> None:
         pass
 
 
+def _run_task_scan() -> None:
+    """Fire task_initiator scan in background after every SCAN_EVERY_N forge replies."""
+    try:
+        subprocess.Popen(
+            [sys.executable, TASK_INITIATOR, "--action", "scan"],
+            creationflags=NO_WIN,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"task scan error: {exc}")
+
+
 def _run_forge_self_eval(reply: str) -> None:
     """Score forge reply against active goal; store eval + updated strategy."""
     try:
@@ -492,6 +507,10 @@ def _route_inbox(mode: str) -> None:
     _deliver_reply(reply_text, from_agent, correlation_id, ts)
     _write_goal_progress(f"forge reply to {from_agent}: {reply_text[:120]}")
     _run_forge_self_eval(reply_text)  # score reply against active goal
+    global _forge_reply_count
+    _forge_reply_count += 1
+    if _forge_reply_count % SCAN_EVERY_N == 0:
+        _run_task_scan()
 
 
 def _route_voice_to_forge(mode: str) -> None:

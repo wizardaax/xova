@@ -155,6 +155,8 @@ SELF_EVAL_STORE   = r"C:\Xova\memory\self_eval_store.json"
 GOAL_DECOMPOSER   = r"C:\Xova\plugins\goal_decomposer.py"
 DISPATCH_STORE    = r"C:\Xova\memory\swarm_dispatch.json"
 SWARM_INTERVAL    = 3600  # seconds between swarm decompositions for same goal
+TASK_INITIATOR    = r"C:\Xova\plugins\task_initiator.py"
+SCAN_EVERY_N      = 3     # run task_initiator scan every N cognitive cycles
 
 
 def _load_active_goal() -> tuple[str | None, str | None]:
@@ -213,6 +215,18 @@ def _run_decompose(goal_id: str) -> None:
         _log(f"swarm: decomposition dispatched for {goal_id}")
     except Exception as exc:
         _log(f"swarm decompose error: {exc}")
+
+
+def _run_task_scan() -> None:
+    """Fire task_initiator scan in background — checks all 5 triggers, creates goals if warranted."""
+    try:
+        subprocess.Popen(
+            [sys.executable, TASK_INITIATOR, "--action", "scan"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"task scan error: {exc}")
 
 
 def _run_self_eval(output: str, goal: str, goal_id: str, agent: str = "mesh") -> float:
@@ -761,6 +775,10 @@ def main() -> None:
         # EvolutionEngine self-improvement pass every EVO_EVERY_N cycles
         if cycle_num % EVO_EVERY_N == 0 and flags["evolutionEnabled"]:
             _run_evolution()
+
+        # Task initiator: scan for triggers every SCAN_EVERY_N cycles
+        if cycle_num % SCAN_EVERY_N == 0:
+            _run_task_scan()
 
         time.sleep(CYCLE_INTERVAL)
 
