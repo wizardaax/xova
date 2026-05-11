@@ -3388,7 +3388,7 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
     if (slash === "/phone-bridge" || slash === "/forge-phone" || slash === "/pbridge") {
       try {
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\plugins\\phone_gateway_ctrl.py" --action start`,
+          command: `python C:\\Xova\\plugins\\phone_gateway_ctrl.py --action start`,
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -3438,10 +3438,10 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
         }]);
         return;
       }
-      const escaped = msg.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       try {
+        await invoke("xova_write_file", { path: "C:\\Xova\\memory\\persona_msg.tmp", content: msg });
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\plugins\\persona_governor.py" --action chat --message "${escaped}"`,
+          command: `python C:\\Xova\\plugins\\persona_governor.py --action chat --message-file C:\\Xova\\memory\\persona_msg.tmp`,
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -3463,7 +3463,7 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
         // No args: show pending proposals
         try {
           const raw = await invoke<string>("xova_run", {
-            command: `python "C:\\Xova\\plugins\\self_modifier.py" --action pending`,
+            command: `python C:\\Xova\\plugins\\self_modifier.py --action pending`,
             cwd: null, elevated: false,
           });
           const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -3494,11 +3494,10 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       }
       const filePath   = rest.slice(0, sep).trim();
       const desc       = rest.slice(sep + 1).trim();
-      const escapedFile = filePath.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-      const escapedDesc = desc.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
       try {
+        await invoke("xova_write_file", { path: "C:\\Xova\\memory\\self_mod_desc.tmp", content: desc });
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\plugins\\self_modifier.py" --action propose --file "${escapedFile}" --description "${escapedDesc}" --proposer "forge"`,
+          command: `python C:\\Xova\\plugins\\self_modifier.py --action propose --file ${filePath} --description-file C:\\Xova\\memory\\self_mod_desc.tmp --proposer forge`,
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -3521,7 +3520,7 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
     if (slash === "/curiosity" || slash === "/explore" || slash === "/gaps") {
       try {
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\plugins\\curiosity_engine.py" --action scan`,
+          command: `python C:\\Xova\\plugins\\curiosity_engine.py --action scan`,
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -3554,7 +3553,7 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
     if (slash === "/dream" || slash === "/consolidate" || slash === "/distil") {
       try {
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\plugins\\dream_consolidator.py" --action consolidate`,
+          command: `python C:\\Xova\\plugins\\dream_consolidator.py --action consolidate`,
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -3590,7 +3589,7 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
       const action = slash === "/cipher-test" ? "roundtrip_test" : slash === "/cipher-papers" ? "scan_papers" : slash === "/kryptos" ? "kryptos_status" : "status";
       try {
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\plugins\\cipher_agent.py" --action ${action}`,
+          command: `python C:\\Xova\\plugins\\cipher_agent.py --action ${action}`,
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -3625,7 +3624,7 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
     if (slash === "/mesh-diag" || slash === "/diag" || slash === "/health") {
       try {
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\plugins\\mesh_diagnostics.py"`,
+          command: `python C:\\Xova\\plugins\\mesh_diagnostics.py`,
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -3720,7 +3719,7 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
           checks.push(["AEON Engine", `validation matched=${d.validation?.matched} max_rel_err=${(d.validation?.max_rel_err*100).toFixed(2)}% (vs PhaseII PDF reference)`]);
         }
         // 2. Cognitive cycle — fresh run, crest stamp
-        const r2 = await invoke<string>("xova_run", { command: `python C:\\Xova\\memory\\run_cycle.py "verify run"`, cwd: null, elevated: false });
+        const r2 = await invoke<string>("xova_run", { command: `python C:\\Xova\\memory\\run_cycle.py verify run`, cwd: null, elevated: false });
         const w2 = JSON.parse(r2) as { exit: number; stdout: string };
         if (w2.exit === 0) {
           const d = JSON.parse(w2.stdout);
