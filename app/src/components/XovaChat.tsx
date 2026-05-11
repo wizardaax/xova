@@ -8,8 +8,7 @@ interface ChatMsg { from: string; text: string; ts: number; correlation_id?: str
 
 function fmtTime(ts: number) {
   const ms = ts > 1e12 ? ts : ts * 1000;
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;
+  return new Date(ms).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function fromCls(from: string) {
@@ -50,7 +49,7 @@ export function XovaChat({ onClose }: { onClose: () => void }) {
       const r = await invoke<string>("xova_read_file", { path: OUTBOX_PATH });
       setOutbox(parseOne<ChatMsg>(r));
     } catch { setOutbox([]); }
-    setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit' }));
     setLoading(false);
   }, []);
 

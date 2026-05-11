@@ -7,8 +7,7 @@ interface OutboxEntry { ts: number; kind: string; text: string; }
 
 function fmtTime(ts: number) {
   const ms = ts > 1e12 ? ts : ts * 1000;
-  const d = new Date(ms);
-  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+  return new Date(ms).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit' });
 }
 
 const KIND_CLS: Record<string, string> = {
@@ -32,7 +31,7 @@ export function PersonaOutbox({ onClose }: { onClose: () => void }) {
     try {
       const raw = await invoke<string>("xova_read_file", { path: OUTBOX_PATH });
       setEntries(parseJsonl(raw ?? "").reverse());
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: '2-digit', minute: '2-digit' }));
     } catch { /**/ }
     setLoading(false);
   }, []);
