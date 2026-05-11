@@ -28,12 +28,13 @@ const AGENT_COLOR: Record<string, string> = {
 };
 function agentCls(a: string) { return AGENT_COLOR[a] ?? "bg-zinc-800/50 text-zinc-400 border-zinc-600"; }
 function fmtTs(ts: number) {
+  if (!ts || isNaN(ts)) return "—";
   const d = new Date((ts > 1e12 ? ts : ts * 1000));
   return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;
 }
 function valueFull(v: unknown) {
   if (typeof v === "string") return v;
-  try { return JSON.stringify(v, null, 2); } catch { return String(v); }
+  try { return JSON.stringify(v, null, 2) ?? String(v); } catch { return String(v); }
 }
 function valuePreview(v: unknown) {
   const s = valueFull(v);
@@ -42,7 +43,7 @@ function valuePreview(v: unknown) {
 
 async function runPlugin(args: string): Promise<SnapResult> {
   const raw = await invoke<string>("xova_run", {
-    command: `"${PY}" "${PLUGIN}" ${args}`, cwd: CWD, elevated: false,
+    command: `${PY} ${PLUGIN} ${args}`, cwd: CWD, elevated: false,
   });
   let text = raw;
   try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout) text = w.stdout; } catch { /**/ }
