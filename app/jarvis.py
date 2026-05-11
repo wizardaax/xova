@@ -46,7 +46,7 @@ def run_agent(task):
     screen_desc = vision(screen, f"I need to: {task}. What do I see on screen right now?")
     messages = [{"role": "system", "content": "You are Xova, JARVIS-level AI agent. Tools as JSON: screenshot, click, type, hotkey, browser, search, speak, windows, run. Output ACTION: {json} to act. Output DONE: summary when complete. Screen: " + screen_desc}, {"role": "user", "content": f"Task: {task}"}]
     for step in range(MAX_STEPS):
-        resp = requests.post(OLLAMA_URL, json={"model": "qwen3:8b", "messages": messages, "stream": False, "options": {"num_ctx": 4096, "temperature": 0.3}, "keep_alive": "1h"}, timeout=240)
+        resp = requests.post(OLLAMA_URL, json={"model": "llama3.2:3b", "messages": messages, "stream": False, "options": {"num_ctx": 4096, "temperature": 0.3}, "keep_alive": "1h"}, timeout=240)
         reply = resp.json().get("message", {}).get("content", "")
         messages.append({"role": "assistant", "content": reply})
         print(json.dumps({"step": step, "thinking": reply[:200]}), flush=True)
