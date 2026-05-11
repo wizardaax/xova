@@ -115,7 +115,7 @@ async function xovaRun(cmd: string): Promise<string> {
 
 function fmtTs(ts: number): string {
   const d = new Date(ts > 1e10 ? ts : ts * 1000);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 function fmtDate(ts: number): string {
   const d = new Date(ts > 1e10 ? ts : ts * 1000);
@@ -177,7 +177,7 @@ export function GoalState({ onClose }: { onClose: () => void }) {
     try {
       const raw = await invoke<string>("xova_read_file", { path: GOAL_STORE });
       setStore(JSON.parse(raw) as GoalStore);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch {
       setStore({ active_goal: null, goals: {} });
     }

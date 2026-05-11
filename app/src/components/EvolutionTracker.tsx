@@ -155,7 +155,7 @@ export function EvolutionTracker({ onClose: _onClose }: { onClose?: () => void }
         ))}
       </div>
       <div className="shrink-0 text-zinc-500 text-[10px] mb-2 px-1">
-        {loading ? "loading…" : `${totalProposed} events · ${events.length} cycles${lastRefresh ? ` · ${lastRefresh.toLocaleTimeString()}` : ""}`}
+        {loading ? "loading…" : `${totalProposed} events · ${events.length} cycles${lastRefresh ? ` · ${lastRefresh.toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane' })}` : ""}`}
       </div>
       <div className="flex-1 overflow-y-auto space-y-1 pr-0.5">
         {events.map(ev => {
@@ -167,7 +167,7 @@ export function EvolutionTracker({ onClose: _onClose }: { onClose?: () => void }
               <button onClick={() => setExpanded(isOpen ? null : ev.filename)}
                 className="w-full flex items-center gap-2 px-2 py-1.5 text-left hover:bg-zinc-800/50 transition-colors">
                 <span className="text-zinc-500 text-[10px] w-[104px] shrink-0">
-                  {ts.toLocaleDateString()} {ts.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  {ts.toLocaleDateString('en-AU', { timeZone: 'Australia/Brisbane' })} {ts.toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" })}
                 </span>
                 <span className={`text-[9px] px-1.5 py-0.5 rounded border shrink-0 uppercase tracking-wide ${BADGE[status]}`}>{status}</span>
                 <span className="text-zinc-400 text-[10px] truncate flex-1">

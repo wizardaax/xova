@@ -55,7 +55,7 @@ export function JarvisHealth({ onClose }: { onClose: () => void }) {
       try { const w = JSON.parse(raw) as { stdout?: string; exit?: number; stderr?: string }; stdout = w.stdout ?? ""; exit = w.exit ?? 0; } catch { /* raw */ }
       if (exit !== 0) { setError(`exit ${exit}: ${stdout.slice(0, 200)}`); setLoading(false); return; }
       setHealth(JSON.parse(stdout) as HealthPayload);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch (e) { setError(String(e)); }
     setLoading(false);
   }, []);

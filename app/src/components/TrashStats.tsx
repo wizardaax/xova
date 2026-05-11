@@ -39,7 +39,7 @@ export function TrashStats({ onClose }: { onClose: () => void }) {
       try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout) text = w.stdout; } catch { /**/ }
       setStats(JSON.parse(text) as StatsResult);
       setErr("");
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" }));
     } catch (e) { setErr(String(e)); }
     setLoading(false);
   }, []);

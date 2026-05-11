@@ -26,7 +26,7 @@ function fmtTs(ts: string) {
   try {
     const d = new Date(ts);
     return d.toLocaleDateString([], { month: "short", day: "numeric" }) + "  " +
-      d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+      d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" });
   } catch { return ts; }
 }
 

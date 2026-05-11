@@ -65,7 +65,7 @@ export function EvolutionRuns({ onClose }: { onClose: () => void }) {
         setRuns(r.runs ?? []);
         setTotal(r.total_files ?? 0);
         setErr("");
-        setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+        setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" }));
       } else setErr(r.error ?? "plugin failed");
     } catch (e) { setErr(String(e)); }
     setLoading(false);

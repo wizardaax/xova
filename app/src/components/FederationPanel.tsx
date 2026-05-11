@@ -69,7 +69,7 @@ export function FederationPanel({ onClose }: { onClose: () => void }) {
       ]);
       setGraph(JSON.parse(graphRaw) as FedGraph);
       setStatus(JSON.parse(statusRaw) as FedStatus);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" }));
     } catch (e) {
       console.error("federation refresh error", e);
     }

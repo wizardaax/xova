@@ -30,7 +30,7 @@ export function PhiUCBState({ onClose }: { onClose: () => void }) {
     try {
       const raw = await invoke<string>("xova_read_file", { path: UCB_PATH });
       setSlots(JSON.parse(raw) as UCBSlot[]);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" }));
     } catch { setSlots([]); }
     try {
       const raw = await invoke<string>("xova_read_file", { path: GOALS_PATH });

@@ -7,7 +7,7 @@ const POLL_MS = 15_000;
 
 interface LogEntry { ts: number; kind: string; detail?: string; levels?: number[] }
 
-function fmt(ts: number) { return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+function fmt(ts: number) { return new Date(ts).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
 
 function parseLog(raw: string): LogEntry[] {
   return raw.split("\n").filter(Boolean).flatMap(line => {

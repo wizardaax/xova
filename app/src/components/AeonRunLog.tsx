@@ -51,7 +51,7 @@ export function AeonRunLog({ onClose }: { onClose: () => void }) {
         .map(l => { try { return JSON.parse(l) as RunEntry; } catch { return null; } })
         .filter((x): x is RunEntry => x !== null);
       setEntries(parsed);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch {
       setEntries([]);
     }

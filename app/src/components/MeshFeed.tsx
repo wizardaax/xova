@@ -46,7 +46,7 @@ function parseLines(raw: string): FeedEntry[] {
 }
 
 function fmt(ts: number): string {
-  return new Date(ts * 1000).toLocaleTimeString([], {
+  return new Date(ts * 1000).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane',
     hour: "2-digit", minute: "2-digit", second: "2-digit",
   });
 }

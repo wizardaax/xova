@@ -93,7 +93,7 @@ export function SecuritySentinel({ onClose, wideDock, onToggleWide }: {
       try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout !== undefined) stdout = w.stdout; } catch { /**/ }
       const r = JSON.parse(stdout.trim()) as ProbeResult;
       setResult(r);
-      setScanAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setScanAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
       const interval = (r.level !== "clear") ? INTERVAL_ALERT : INTERVAL_NORMAL;
       nextRef.current = Date.now() + interval * 1000;
       setCountdown(interval);

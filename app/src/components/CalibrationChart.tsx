@@ -30,7 +30,7 @@ export function CalibrationChart({ onClose }: { onClose: () => void }) {
         try { return [JSON.parse(l) as CalibEntry]; } catch { return []; }
       });
       setEntries(parsed);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" }));
     } catch { setEntries([]); }
     setLoading(false);
   }, []);

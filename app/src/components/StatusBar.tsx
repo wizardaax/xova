@@ -348,7 +348,7 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode, currentModel,
         <span className="text-zinc-700 text-[9px]">{messageCount} msg{messageCount !== 1 ? "s" : ""}</span>
       )}
       <span className="ml-auto text-zinc-700">
-        {status ? `updated ${new Date(status.ts).toLocaleTimeString([], {hour:"2-digit", minute:"2-digit", second:"2-digit"})}` : "…"}
+        {status ? `updated ${new Date(status.ts).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane',hour:"2-digit", minute:"2-digit", second:"2-digit"})}` : "…"}
       </span>
     </div>
   );

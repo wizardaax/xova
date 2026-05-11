@@ -34,7 +34,7 @@ function fmtAgo(ts: number): string {
 
 function fmtTime(ts: number): string {
   const ms = ts > 1e10 ? ts : ts * 1000;
-  return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return new Date(ms).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 export function SwarmDispatch({ onClose }: { onClose: () => void }) {

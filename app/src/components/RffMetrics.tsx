@@ -49,7 +49,7 @@ export function RffMetrics({ onClose }: { onClose: () => void }) {
       let stdout = raw;
       try { const wrap = JSON.parse(raw) as { stdout?: string }; if (wrap.stdout !== undefined) stdout = wrap.stdout; } catch { /* raw */ }
       setData(JSON.parse(stdout) as RffResult);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch { /* silent */ }
     setLoading(false);
   }, []);

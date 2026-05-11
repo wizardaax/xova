@@ -47,7 +47,7 @@ export function ActionTrace({ onClose }: { onClose: () => void }) {
       }
       rows.reverse();
       setEntries(rows.slice(0, MAX_SHOW));
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
       setErr("");
     } catch {
       setErr("no trace yet");

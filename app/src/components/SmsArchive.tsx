@@ -12,7 +12,7 @@ interface SmsEntry { id?: string; ts: number; from?: string; to?: string; body: 
 function fmtTs(ms: number) {
   const d = new Date(ms > 1e12 ? ms : ms * 1000);
   return d.toLocaleDateString([], { month: "short", day: "numeric" }) + " " +
-    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" });
 }
 
 export function SmsArchive({ onClose }: { onClose: () => void }) {

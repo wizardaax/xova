@@ -92,7 +92,7 @@ export function SettingsPanel() {
           </p>
         </div>
         {savedAt && (
-          <p className="text-[10px] text-emerald-500 font-mono">saved · {new Date(savedAt).toLocaleTimeString()}</p>
+          <p className="text-[10px] text-emerald-500 font-mono">saved · {new Date(savedAt).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane' })}</p>
         )}
 
         <div className="pt-4 border-t border-zinc-800">

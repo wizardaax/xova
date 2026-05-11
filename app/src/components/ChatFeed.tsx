@@ -8,7 +8,7 @@ import "highlight.js/styles/github-dark.css";
 
 function fmtTime(ts: number) {
   const d = new Date(ts);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" });
 }
 
 function dayKey(ts: number) {

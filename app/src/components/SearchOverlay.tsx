@@ -58,7 +58,7 @@ export function SearchOverlay({ open, messages, onClose, onJump }: Props) {
               className="w-full text-left px-4 py-2.5 hover:bg-zinc-800 border-b border-zinc-800/50 transition-colors">
               <div className="flex items-center gap-2 mb-0.5">
                 <span className={`text-[10px] uppercase font-mono ${m.role === "user" ? "text-emerald-400" : "text-zinc-400"}`}>{m.role}</span>
-                <span className="text-zinc-600 text-[10px]">{new Date(m.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                <span className="text-zinc-600 text-[10px]">{new Date(m.ts).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" })}</span>
               </div>
               <div className="text-zinc-300 text-[12px] font-mono leading-relaxed">
                 {highlight(m.text)}

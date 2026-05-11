@@ -113,7 +113,7 @@ export function DriveMatrix({ onClose }: { onClose: () => void }) {
       try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout !== undefined) stdout = w.stdout; } catch { /* raw */ }
       const parsed = JSON.parse(stdout.trim()) as ProbeResult;
       setResult(parsed);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch (e) { setResult({ ok: false, error: String(e) }); }
     setLoading(false);
   }, []);

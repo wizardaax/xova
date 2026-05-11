@@ -43,7 +43,7 @@ export function ChatLogBrowser({ onClose }: { onClose: () => void }) {
     }));
     all.sort((a, b) => a.ts - b.ts);
     setLines(all.slice(-200));
-    setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+    setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" }));
     setLoading(false);
   }, []);
 

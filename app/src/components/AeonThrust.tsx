@@ -194,7 +194,7 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
       const stdout = await xovaRun(CMD_SUMMARY);
       const parsed = JSON.parse(stdout) as { ok: boolean; summary?: AeonSummary; error?: string };
       if (!parsed.ok || !parsed.summary) { setErr(parsed.error ?? "aeon_summary.py not ready"); setSummary(null); }
-      else { setSummary(parsed.summary); setErr(null); setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })); }
+      else { setSummary(parsed.summary); setErr(null); setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" })); }
     } catch { setErr("aeon_summary.py not ready"); setSummary(null); }
     await loadHistory();
     setLoading(false);
@@ -658,7 +658,7 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
               <div className="space-y-0.5">
                 {[...runHistory].reverse().slice(0, 15).map((r, i) => (
                   <div key={i} className="flex gap-2 text-[9px] border-b border-zinc-900 py-0.5">
-                    <span className="text-zinc-600 shrink-0">{new Date(r.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    <span className="text-zinc-600 shrink-0">{new Date(r.ts * 1000).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" })}</span>
                     <span className="font-bold" style={{ color: (r.quality ?? 0) >= 0.8 ? "#34d399" : "#fbbf24" }}>{((r.quality ?? 0) * 100).toFixed(1)}%</span>
                     <span className="text-violet-300 font-mono">{r.peak_thrust?.toExponential(2) ?? "—"} N</span>
                     <span className="text-zinc-600">n={r.n_steps ?? "?"}</span>
@@ -831,7 +831,7 @@ export function AeonThrust({ onClose }: { onClose: () => void }) {
                 ))}
               </div>
               <div className="text-[8px] text-zinc-600 text-center">
-                last scan {new Date(ciHealth.ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                last scan {new Date(ciHealth.ts * 1000).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" })}
               </div>
               <button onClick={runCI} disabled={ciRunning}
                 className="w-full py-1 rounded border border-zinc-700 text-zinc-500 text-[9px] hover:border-violet-700 hover:text-violet-400">

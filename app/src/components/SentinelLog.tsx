@@ -39,7 +39,7 @@ function reqColor(msg: string): string {
 
 function fmtTs(ts: number): string {
   const d = new Date(ts > 1e10 ? ts : ts * 1000);
-  return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 function fmtDate(ts: number): string {
@@ -79,7 +79,7 @@ export function SentinelLog({ onClose }: { onClose: () => void }) {
     setViolations(parsed.reverse());
     setRawSentinel(sRaw.split("\n").map(l => l.trimEnd()).filter(Boolean).reverse());
     setRawForge(fRaw.split("\n").map(l => l.trimEnd()).filter(Boolean).reverse().filter(l => l.includes("SCE-88")));
-    setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     setLoading(false);
   }, []);
 

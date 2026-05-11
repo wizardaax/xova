@@ -35,7 +35,7 @@ export function ViolationsLog({ onClose }: { onClose: () => void }) {
         .map(l => { try { return JSON.parse(l) as ViolationEntry; } catch { return null; } })
         .filter((x): x is ViolationEntry => x !== null);
       setEntries(parsed);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch { setEntries([]); }
     setLoading(false);
   }, []);

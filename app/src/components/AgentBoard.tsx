@@ -90,7 +90,7 @@ export function AgentBoard({ onClose }: { onClose: () => void }) {
       setBoard(JSON.parse(rawB || "{}") as Board);
       setFlags(JSON.parse(rawF || "{}") as Flags);
       setDispatch(JSON.parse(rawD || "{}") as Dispatch);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch (e) { setError(String(e)); }
     setLoading(false);
   }, []);

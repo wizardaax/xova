@@ -19,7 +19,7 @@ function scoreColor(s: number): string {
   return s >= 0.7 ? "#34d399" : s >= 0.45 ? "#fbbf24" : "#f87171";
 }
 function fmtTs(ts: number) {
-  return new Date(ts > 1e10 ? ts : ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  return new Date(ts > 1e10 ? ts : ts * 1000).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 const CHART_W = 360; const CHART_H = 56;
 const BUCKETS = 12; const BUCKET_MS = 10 * 60_000;
@@ -40,7 +40,7 @@ function parseEvents(raw: string): SelfEvalEvent[] {
   });
 }
 
-function fmt(ts: number) { return new Date(ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
+function fmt(ts: number) { return new Date(ts).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }); }
 
 function RiskLine({ events }: { events: SelfEvalEvent[] }) {
   if (!events.length) return <svg width={CHART_W} height={CHART_H}><text x={CHART_W/2} y={CHART_H/2} textAnchor="middle" fill="#52525b" fontSize="10">no data</text></svg>;

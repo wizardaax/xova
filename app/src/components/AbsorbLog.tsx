@@ -79,7 +79,7 @@ export function AbsorbLog({ onClose }: { onClose: () => void }) {
         .map(l => { try { return JSON.parse(l) as AbsorbEntry; } catch { return null; } })
         .filter((x): x is AbsorbEntry => x !== null);
       setEntries(parsed);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" }));
     } catch { setEntries([]); }
     try {
       const raw = await invoke<string>("xova_read_file", { path: WORKING_PATH });

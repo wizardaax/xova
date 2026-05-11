@@ -56,7 +56,7 @@ export function EventsLog({ onClose }: { onClose: () => void }) {
         .sort((a, b) => (b.ts > 1e12 ? b.ts : b.ts * 1000) - (a.ts > 1e12 ? a.ts : a.ts * 1000))
         .slice(0, 150);
       setEntries(merged);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch { /* silent */ }
     setLoading(false);
   }, []);

@@ -81,7 +81,7 @@ export function AgiAudit({ onClose }: { onClose: () => void }) {
       let stdout = raw, stderr = "", exit = 0;
       try { const w = JSON.parse(raw) as { stdout?: string; stderr?: string; exit?: number }; stdout = w.stdout ?? ""; stderr = w.stderr ?? ""; exit = w.exit ?? 0; } catch { /* raw */ }
       setRawOut(stdout + (stderr ? `\n--- stderr ---\n${stderr}` : ""));
-      setRanAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setRanAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
       if (!stdout.trim() && exit !== 0) { setError(`exit ${exit}: ${stderr.slice(0, 400)}`); }
       else { const r = parseOutput(stdout); setLines(r.lines); setSummary(r.summary); }
     } catch (e) { setError(String(e)); }

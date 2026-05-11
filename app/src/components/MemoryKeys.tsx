@@ -20,7 +20,7 @@ export function MemoryKeys({ onClose }: { onClose: () => void }) {
         if (Array.isArray(arr)) parsed = arr as MemoryEntry[];
       } catch { /* silent */ }
       setEntries(parsed);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" }));
     } catch { setEntries([]); }
     setLoading(false);
   }, []);

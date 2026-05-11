@@ -62,7 +62,7 @@ export function QuickCapture({ open, onClose }: Props) {
                 className="text-zinc-600 hover:text-zinc-400 transition-colors text-[9px] font-mono block mb-0.5"
                 title="Click to copy"
               >
-                {new Date(n.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                {new Date(n.ts).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" })}
               </button>
               <span className="text-zinc-300">{n.text}</span>
             </div>

@@ -101,7 +101,7 @@ export function MemoryGraph({ onClose }: { onClose: () => void }) {
     return selectedNode.links.map(id => graph.nodes.find(n => n.id === id)).filter(Boolean) as MemNode[];
   }, [selectedNode, graph]);
 
-  const builtAt = graph ? new Date(graph.built_at * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : null;
+  const builtAt = graph ? new Date(graph.built_at * 1000).toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" }) : null;
 
   return (
     <div className="flex flex-col h-full bg-zinc-950 text-zinc-300 font-mono text-[11px]">
@@ -195,7 +195,7 @@ export function MemoryGraph({ onClose }: { onClose: () => void }) {
                 {selectedNode.body}
               </div>
               <div className="text-zinc-700 text-[8px]">
-                {selectedNode.source} · {new Date(selectedNode.ts * 1000).toLocaleDateString()}
+                {selectedNode.source} · {new Date(selectedNode.ts * 1000).toLocaleDateString('en-AU', { timeZone: 'Australia/Brisbane' })}
               </div>
               {linkedNodes.length > 0 && (
                 <div className="border-t border-zinc-900 pt-2">

@@ -15,7 +15,7 @@ export function ForgeNotes({ onClose }: { onClose: () => void }) {
       const raw = await invoke<string>("xova_read_file", { path: NOTES_PATH });
       setContent(raw);
       setSizeKb(Math.round(raw.length / 1024 * 10) / 10);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch { /* ok */ }
   }, []);
 

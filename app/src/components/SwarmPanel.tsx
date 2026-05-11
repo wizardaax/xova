@@ -40,7 +40,7 @@ export function SwarmPanel({ onClose }: { onClose: () => void }) {
       try { const w = JSON.parse(raw) as { stdout?: string }; if (w.stdout !== undefined) stdout = w.stdout; } catch { /* raw */ }
       const parsed = JSON.parse(stdout) as { ok: boolean; status?: SwarmStatus; error?: string };
       if (!parsed.ok || !parsed.status) { setErr(parsed.error ?? "swarm_status.py not ready"); setStatus(null); }
-      else { setStatus(parsed.status); setErr(null); setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })); }
+      else { setStatus(parsed.status); setErr(null); setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" })); }
     } catch { setErr("swarm_status.py not ready"); setStatus(null); }
     setLoading(false);
   }, []);

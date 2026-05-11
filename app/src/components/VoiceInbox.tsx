@@ -58,7 +58,7 @@ export function VoiceInbox({ onClose }: { onClose: () => void }) {
       const parsed = JSON.parse(raw ?? "[]");
       const items = Array.isArray(parsed) ? parsed : [parsed];
       setMessages(items.map(normalise).filter(Boolean) as InboxMessage[]);
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
       setError(null);
     } catch (e) { setError(String(e)); }
     setLoading(false);

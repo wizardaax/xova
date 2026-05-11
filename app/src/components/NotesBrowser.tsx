@@ -8,7 +8,7 @@ interface Note { id: string; ts: number; text: string }
 function fmt(ts: number) {
   const d = new Date(ts);
   return d.toLocaleDateString([], { month: "short", day: "numeric" }) + "  " +
-    d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    d.toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit" });
 }
 
 async function loadNotes(): Promise<Note[]> {

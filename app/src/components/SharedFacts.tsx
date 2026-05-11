@@ -45,7 +45,7 @@ export function SharedFacts({ onClose }: { onClose: () => void }) {
       const raw = await invoke<string>("xova_read_file", { path: XOVA_SYNC_PATH });
       setXovaSync(JSON.parse(raw) as SyncFacts);
     } catch { /* ok */ }
-    setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+    setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
   }, []);
 
   useEffect(() => {

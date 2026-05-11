@@ -33,7 +33,7 @@ export function CoherenceTimeline({ onClose }: { onClose: () => void }) {
         catch { return []; }
       });
       setPts(parsed.slice(-100));
-      setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }));
+      setUpdatedAt(new Date().toLocaleTimeString('en-AU', { timeZone: 'Australia/Brisbane', hour: "2-digit", minute: "2-digit", second: "2-digit" }));
     } catch { /* silent */ }
   }, []);
 
