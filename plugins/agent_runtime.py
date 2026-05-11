@@ -112,13 +112,14 @@ AGENT_DOMAIN = {
 TOOLS_PROMPT = """You have these tools. Respond with a JSON array of tool calls.
 
 Tools:
-  sce88_check   {}                         — run SCE-88 gate on current broker state
-  broker_read   {"key": "slot.name"}       — read a context_broker slot
-  broker_write  {"key": "k", "value": {}}  — write a result to context_broker
-  report        {"text": "..."}            — report to Xova chat inbox
-  trace         {"action": "run|write|read|sweep", "summary": "..."}  — log to action_trace
-  inbox_write   {"content": "...", "priority": "normal|high"}  — send message to Forge
-  done          {"summary": "..."}         — finish this cycle
+  sce88_check      {}                                    — run SCE-88 gate
+  broker_read      {"key": "slot.name"}                  — read a context_broker slot
+  broker_write     {"key": "k", "value": {}}             — write result to context_broker
+  report           {"text": "..."}                       — report to Xova chat
+  trace            {"action": "run|write|read|sweep", "summary": "..."}  — log to action_trace
+  inbox_write      {"content": "...", "priority": "normal|high"}  — message Forge/Claude
+  computer_task    {"goal": "do X on the computer"}      — full computer control (screenshot, click, type, shell, browser, files)
+  done             {"summary": "..."}                    — finish this cycle
 
 Rules:
 - Always call sce88_check first
@@ -250,6 +251,31 @@ def _tool_trace(action: str, plugin: str, summary: str) -> dict:
                        "--summary", summary[:200])
 
 
+XOVA_DO = r"D:\temp\xova_do.py"
+
+def _tool_computer_task(agent: str, goal: str, broker: dict) -> dict:
+    """Agents execute computer tasks directly on behalf of Xova. SCE-88 gates first."""
+    sce = _tool_sce88_check(broker)
+    if not sce.get("ok", True):
+        return {"ok": False, "blocked": True, "reason": "SCE-88 denied"}
+    try:
+        goal_path = os.path.join(r"C:\Xova\memory", f"agent_goal_{int(time.time()*1000)}.txt")
+        with open(goal_path, "w", encoding="utf-8") as fh:
+            fh.write(goal)
+        r = subprocess.run(
+            [sys.executable, XOVA_DO, "--goal-file", goal_path],
+            capture_output=True, text=True, timeout=120,
+            creationflags=NO_WIN, encoding="utf-8",
+        )
+        out = r.stdout.strip()
+        try:
+            return json.loads(out)
+        except Exception:
+            return {"ok": r.returncode == 0, "raw": out[:200]}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def _tool_inbox_write(agent: str, content: str, priority: str = "normal") -> dict:
     return _run_plugin("forge_inbox_write.py",
                        "--from", f"agent-{_agent_num(agent):02d}-{agent}",
@@ -280,99 +306,131 @@ def _ollama(prompt: str) -> str:
             pass
 
 
-# ── single agent cycle ─────────────────────────────────────────────────────────
-def run_cycle(agent: str) -> dict:
-    domain   = AGENT_DOMAIN.get(agent, {"slots": [], "desc": agent})
-    broker   = _read_broker()
-    inbox    = _drain_my_inbox(agent)
+WIZARDAAX = r"D:\github\wizardaax"
+CORPUS_JSON = r"C:\Xova\memory\corpus_index.json"
 
-    # Gather domain slot values for context
-    slot_ctx = {}
-    for key in domain["slots"]:
-        v = _slot_val(broker, key)
-        if v is not None:
-            slot_ctx[key] = v
 
-    inbox_ctx = f"\nPending tasks from inbox: {inbox}" if inbox else ""
-
-    prompt = (
-        f"GOAL: {SOVEREIGN_GOAL}\n\n"
-        f"You are the {agent} agent. Your AEON role: {domain['aeon']}.\n"
-        f"Current signals: {json.dumps(slot_ctx, ensure_ascii=False)}"
-        f"{inbox_ctx}\n\n"
-        f"{TOOLS_PROMPT}\n"
-        f"What tool calls move us closer to the sovereign goal this cycle?"
-    )
-
-    raw = _ollama(prompt)
-
-    # Parse tool calls from response
-    tool_calls: list[dict] = []
+def _domain_work(agent: str, broker: dict) -> str:
+    """Per-agent deterministic domain check — no Ollama. Returns a short summary string."""
     try:
-        # Find JSON array in response
-        start = raw.find("[")
-        end   = raw.rfind("]") + 1
-        if start >= 0 and end > start:
-            tool_calls = json.loads(raw[start:end])
-    except Exception:
-        pass
+        if agent == "sentinel":
+            r = _run_plugin("sce88_gate.py", "--coherence", "0.65", "--uncertainty", "0.3",
+                            "--t0", "0.33", "--t1", "0.34", "--t2", "0.33")
+            return f"sce88={'pass' if r.get('ok', True) else 'FAIL'} violations={r.get('violations', 0)}"
 
-    if not tool_calls:
-        # Fallback: minimal cycle — just sce88 + trace
-        tool_calls = [
-            {"tool": "sce88_check"},
-            {"tool": "trace", "action": "run", "summary": f"{agent} cycle: no tasks, nominal"},
-            {"tool": "done",  "summary": "nominal cycle"},
-        ]
+        if agent == "coherence":
+            coh = _slot_val(broker, "agents.coherence_ma") or {}
+            trend = _slot_val(broker, "agents.coherence_trend") or "unknown"
+            ma = coh.get("ma", "?") if isinstance(coh, dict) else coh
+            return f"coherence_ma={ma} trend={trend}"
+
+        if agent == "memory":
+            slots = broker.get("slots", {})
+            total = len(slots)
+            stale = sum(1 for v in slots.values()
+                        if isinstance(v, dict) and v.get("ts", 9e12) < time.time() - 3600)
+            return f"broker_slots={total} stale_1h={stale}"
+
+        if agent == "repo":
+            repos = [d for d in os.listdir(WIZARDAAX)
+                     if os.path.isdir(os.path.join(WIZARDAAX, d))] if os.path.isdir(WIZARDAAX) else []
+            r = subprocess.run(
+                ["git", "-C", WIZARDAAX, "status", "--short"],
+                capture_output=True, text=True, timeout=10,
+            )
+            changed = len([l for l in r.stdout.splitlines() if l.strip()])
+            return f"repos={len(repos)} uncommitted_lines={changed}"
+
+        if agent == "corpus":
+            try:
+                mtime = os.path.getmtime(CORPUS_JSON)
+                age_h = (time.time() - mtime) / 3600
+                with open(CORPUS_JSON, encoding="utf-8") as f:
+                    count = len(json.load(f))
+                return f"corpus={count} entries age={age_h:.1f}h"
+            except Exception as e:
+                return f"corpus_error={e}"
+
+        if agent == "evolution":
+            ci = _slot_val(broker, "xova.ci_health") or {}
+            return f"ci_health={ci.get('status', 'unknown') if isinstance(ci, dict) else ci}"
+
+        if agent == "phase":
+            phase = _slot_val(broker, "xova.lucas_phase") or {}
+            drift = _slot_val(broker, "agents.phase_drift") or 0
+            return f"lucas_phase={str(phase)[:60]} drift={drift}"
+
+        if agent == "field":
+            fw = _slot_val(broker, "xova.field_weave") or {}
+            fd = _slot_val(broker, "agents.field_drift") or 0
+            return f"field_weave={str(fw)[:60]} drift={fd}"
+
+        if agent == "mesh":
+            sweep = _slot_val(broker, "mesh.last_sweep") or {}
+            last = _slot_val(broker, "agents.last_cycles") or {}
+            cycles = last.get("total_cycles", "?") if isinstance(last, dict) else "?"
+            return f"last_sweep={str(sweep)[:60]} total_cycles={cycles}"
+
+        if agent == "browser":
+            # Check slash inbox for pending web research
+            try:
+                with open(SLASH_INBOX, encoding="utf-8") as f:
+                    pending = json.load(f)
+                return f"web_inbox=pending text={str(pending.get('text',''))[:60]}"
+            except Exception:
+                return "web_inbox=empty"
+
+        if agent == "forge":
+            task = _slot_val(broker, "forge.current_task") or "none"
+            calls = broker.get("slots", {}).get("forge.calls_this_hour", {})
+            n = calls.get("value", 0) if isinstance(calls, dict) else 0
+            return f"forge_task={str(task)[:60]} calls_1h={n}"
+
+        if agent == "jarvis":
+            sess = _slot_val(broker, "xova.session") or {}
+            hb = _slot_val(broker, "federation.heartbeat") or {}
+            return f"session={str(sess)[:40]} federation={str(hb)[:40]}"
+
+        if agent == "voice":
+            sess = _slot_val(broker, "xova.session") or {}
+            return f"voice_session={str(sess)[:80]}"
+
+    except Exception as e:
+        return f"domain_error={e}"
+
+    return "ok"
+
+
+# ── single agent cycle — NO OLLAMA — Xova decides, agents execute ─────────────
+def run_cycle(agent: str) -> dict:
+    broker = _read_broker()
+    inbox  = _drain_my_inbox(agent)
 
     results: list[dict] = []
-    done_summary = ""
 
-    for call in tool_calls[:8]:
-        tool = call.get("tool", "")
+    # Always do domain-specific work
+    domain_summary = _domain_work(agent, broker)
 
-        if tool == "sce88_check":
-            r = _tool_sce88_check(broker)
-            results.append({"tool": tool, "result": r})
+    if inbox:
+        # SCE-88 gate — ask Xova what's allowed before acting
+        sce = _tool_sce88_check(broker)
+        if sce.get("ok", True):
+            for task in inbox[:3]:
+                r = _tool_computer_task(agent, task, broker)
+                results.append({"tool": "computer_task", "goal": task[:80], "result": r})
+                _tool_trace("run", f"agent_runtime.{agent}", f"{agent} queued to Xova: {task[:80]}")
+            done_summary = f"queued {len(inbox[:3])} tasks to Xova | {domain_summary}"
+        else:
+            done_summary = f"SCE-88 blocked ({len(inbox)} tasks held) | {domain_summary}"
+            _tool_trace("run", f"agent_runtime.{agent}", done_summary)
+    else:
+        _tool_sce88_check(broker)
+        _tool_trace("run", f"agent_runtime.{agent}", f"{agent}: {domain_summary}")
+        done_summary = domain_summary
 
-        elif tool == "broker_read":
-            r = _tool_broker_read(call.get("key", ""))
-            results.append({"tool": tool, "key": call.get("key"), "result": r})
-
-        elif tool == "broker_write":
-            r = _tool_broker_write(agent, call.get("key", f"{agent}.last_run"),
-                                   call.get("value", {}))
-            results.append({"tool": tool, "key": call.get("key"), "result": r})
-
-        elif tool == "report":
-            r = _tool_report(call.get("text", ""))
-            results.append({"tool": tool, "result": r})
-
-        elif tool == "trace":
-            r = _tool_trace(call.get("action", "run"), agent,
-                            call.get("summary", f"{agent} cycle"))
-            results.append({"tool": tool, "result": r})
-
-        elif tool == "inbox_write":
-            r = _tool_inbox_write(agent, call.get("content", ""),
-                                  call.get("priority", "normal"))
-            results.append({"tool": tool, "result": r})
-
-        elif tool == "done":
-            done_summary = call.get("summary", "")
-            results.append({"tool": tool, "summary": done_summary})
-            break
-
-    # Always trace the cycle completion
-    _tool_trace("run", f"agent_runtime.{agent}",
-                f"{agent} cycle complete: {done_summary[:120] or 'ok'}")
-
-    # Always report to Xova — agents work as a team, Xova sees everything
-    report_text = (
-        f"[{agent}] {done_summary or 'cycle ok'} "
-        f"(tools={len(results)} inbox={len(inbox)})"
-    )
-    _tool_report(report_text)
+    # Report to Xova — only report something significant, not every standby
+    if any(w in done_summary.lower() for w in ("fail", "error", "queued", "pending", "stale")):
+        _tool_report(f"[{agent}] {done_summary[:200]}")
 
     return {
         "ok":      True,
@@ -380,7 +438,7 @@ def run_cycle(agent: str) -> dict:
         "ts":      time.time(),
         "tools_called": len(results),
         "inbox_tasks":  len(inbox),
-        "summary": done_summary or f"{agent} cycle ok",
+        "summary": done_summary,
     }
 
 
