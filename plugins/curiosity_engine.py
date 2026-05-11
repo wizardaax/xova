@@ -188,7 +188,7 @@ def _gaps_corpus_coverage() -> list[str]:
             ci = json.load(fh)
     except Exception:
         return []
-    entries = ci.get("entries", [])
+    entries = ci if isinstance(ci, list) else ci.get("entries", [])
     total = len(entries)
     if not total:
         return []
