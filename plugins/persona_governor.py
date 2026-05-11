@@ -423,6 +423,7 @@ def main() -> None:
     ap.add_argument("--action",   default="status",
                     choices=["synthesize", "chat", "consult", "status", "clear"])
     ap.add_argument("--message",  default="")
+    ap.add_argument("--message-file", default="")
     ap.add_argument("--proposal", default="")
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
@@ -430,7 +431,14 @@ def main() -> None:
     if args.action == "synthesize":
         result = action_synthesize()
     elif args.action == "chat":
-        msg = args.message.strip()
+        if args.message_file:
+            try:
+                with open(args.message_file, encoding="utf-8") as _f:
+                    msg = _f.read().strip()
+            except Exception:
+                msg = ""
+        else:
+            msg = args.message.strip()
         result = action_chat(msg) if msg else {"ok": False, "error": "no message"}
     elif args.action == "consult":
         prop = args.proposal.strip()

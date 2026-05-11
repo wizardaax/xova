@@ -232,15 +232,23 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--action",      default="status",
                     choices=["propose", "list", "pending", "status", "apply"])
-    ap.add_argument("--file",        default="")
-    ap.add_argument("--description", default="")
-    ap.add_argument("--proposer",    default="mesh")
-    ap.add_argument("--id",          default="")
+    ap.add_argument("--file",             default="")
+    ap.add_argument("--description",      default="")
+    ap.add_argument("--description-file", default="")
+    ap.add_argument("--proposer",         default="mesh")
+    ap.add_argument("--id",               default="")
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
 
     if args.action == "propose":
-        result = action_propose(args.file.strip(), args.description.strip(), args.proposer.strip())
+        desc = args.description.strip()
+        if not desc and args.description_file:
+            try:
+                with open(args.description_file, encoding="utf-8") as _f:
+                    desc = _f.read().strip()
+            except Exception:
+                desc = ""
+        result = action_propose(args.file.strip(), desc, args.proposer.strip())
     elif args.action == "list":
         result = action_list()
     elif args.action == "pending":

@@ -40,7 +40,15 @@ def main() -> int:
     if len(sys.argv) < 2:
         print(json.dumps({"error": "no goal provided"}))
         return 2
-    goal = sys.argv[1]
+    if len(sys.argv) >= 3 and sys.argv[1] == "--goal-file":
+        try:
+            with open(sys.argv[2], encoding="utf-8") as _f:
+                goal = _f.read().strip()
+        except Exception as _e:
+            print(json.dumps({"error": f"cannot read goal file: {_e}"}))
+            return 2
+    else:
+        goal = " ".join(sys.argv[1:])
 
     cc = CognitiveCycle(log_dir=LOG_DIR)
     result = cc.run(goal)

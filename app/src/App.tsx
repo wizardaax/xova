@@ -2220,10 +2220,9 @@ function App() {
         text: `🔁 Cognitive cycle running: _"${goal}"_ …`,
       }]);
       try {
-        // shell-escape the goal: replace " with \"
-        const safe = goal.replace(/"/g, '\\"');
+        const safeGoal = goal.replace(/["&|<>^]/g, '');
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\memory\\run_cycle.py" "${safe}"`,
+          command: `python C:\\Xova\\memory\\run_cycle.py ${safeGoal}`,
           cwd: null,
           elevated: false,
         });
@@ -3415,7 +3414,7 @@ ${Object.entries(info.rules ?? {}).map(([k,v]) => `  · ${k}: ${v}`).join("\n")}
     if (slash === "/persona" || slash === "/governor" || slash === "/xova-voice") {
       try {
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\plugins\\persona_governor.py" --action synthesize`,
+          command: `python C:\\Xova\\plugins\\persona_governor.py --action synthesize`,
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
@@ -3764,7 +3763,7 @@ Every value above came from a fresh subprocess invocation right now. No mocks, n
       }]);
       try {
         const raw = await invoke<string>("xova_run", {
-          command: `python "C:\\Xova\\memory\\run_evolution.py"`,
+          command: "python C:\\Xova\\memory\\run_evolution.py",
           cwd: null, elevated: false,
         });
         const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
