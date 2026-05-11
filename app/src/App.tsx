@@ -2022,6 +2022,7 @@ function App() {
       return;
     }
     // Sim gallery — the 7 visualisations Adam generated via run_all_simulations.py
+    const SIM_DIR = "D:\\github\\wizardaax\\sim_outputs";
     const SIM_GALLERY: { n: number; file: string; title: string }[] = [
       { n: 1, file: "1_riemann_spiral.png",         title: "Riemann-Spiral Field Theory (ziltrix-sch-core)" },
       { n: 2, file: "2_recursive_field_math.png",   title: "Recursive Field Math (recursive-field-math-pro)" },
@@ -2041,7 +2042,7 @@ function App() {
         }]);
         return;
       }
-      const path = `D:\\github\\wizardaax\\sim_outputs\\${sim.file}`;
+      const path = `${SIM_DIR}\\${sim.file}`;
       setMessages((prev) => [...prev, { id: `sim-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
         text: `🌀 ${sim.title}\n\n*From run_all_simulations.py — visualises the working substrate of the framework.*`,
         image: path,
@@ -2131,16 +2132,19 @@ function App() {
     }
     if (slash === "/audit") {
       try {
-        const auditPath = "C:\\Users\\adz_7\\Documents\\COMPLETE_AUDIT_2026-04-25.md";
-        const text = await invoke<string>("xova_read_file", { path: auditPath });
-        // Cut to executive summary + verdict (first ~120 lines is exec + section 1.1)
-        const exec = text.split("\n").slice(0, 30).join("\n");
+        const raw = await invoke<string>("xova_run", {
+          command: `powershell -NoProfile -Command Get-Content D:\\Xova\\memory\\COMPLETE_AUDIT_2026-04-25.md -TotalCount 30 -ErrorAction SilentlyContinue`,
+          cwd: null, elevated: false,
+        });
+        const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+        const exec = wrap.stdout.trim();
+        if (!exec) throw new Error("COMPLETE_AUDIT_2026-04-25.md not found at D:\\Xova\\memory\\");
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
-          text: `📋 **wizardaax Ecosystem — Complete Audit (executive summary)**\nSource: ${auditPath} (534 lines total)\n\n${exec}\n\n*Open the file directly for the full audit — 9 repos, chronological lineage, dual-13-agent topology, provenance lockdown status, context for interpretation.*`,
+          text: `📋 **wizardaax Ecosystem — Complete Audit (executive summary)**\nSource: D:\\Xova\\memory\\COMPLETE_AUDIT_2026-04-25.md\n\n${exec}\n\n*Open the file directly for the full audit — 9 repos, chronological lineage, dual-13-agent topology, provenance lockdown status, context for interpretation.*`,
         }]);
       } catch (e) {
         setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
-          text: `Audit not at expected path: ${e instanceof Error ? e.message : String(e)}`,
+          text: `Audit not found: ${e instanceof Error ? e.message : String(e)}`,
         }]);
       }
       return;
