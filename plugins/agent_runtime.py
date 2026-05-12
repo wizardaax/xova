@@ -36,6 +36,8 @@ BROKER_JSON      = r"C:\Xova\memory\context_broker.json"
 HOOK_INBOX       = r"C:\Xova\memory\forge_hook_inbox.jsonl"
 INBOX_CURSOR     = r"C:\Xova\memory\agent_runtime_cursors.json"
 
+SLASH_INBOX      = r"C:\Xova\memory\xova_slash_inbox.json"
+
 OLLAMA_HOST      = "localhost"
 OLLAMA_PORT      = 11434
 OLLAMA_MODEL     = "llama3.2:3b"
