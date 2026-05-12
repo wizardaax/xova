@@ -369,6 +369,9 @@ function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const [jarvisRunning, setJarvisRunning] = useState<boolean>(false);
+  const [jarvisMuted, setJarvisMuted] = useState<boolean>(false);
+  const jarvisMutedRef = useRef<boolean>(false);
+  useEffect(() => { jarvisMutedRef.current = jarvisMuted; }, [jarvisMuted]);
   const [screenWatchActive, setScreenWatchActive] = useState<boolean>(false);
   const screenWatchTimerRef = useRef<number | null>(null);
   const screenWatchSeqRef = useRef<number>(0);
@@ -841,43 +844,45 @@ function App() {
             // Forge reply: display as "🔨 forge" via id prefix.
             const isForgeBubble = parsedRole === "forge";
             const isAbsorbBubble = parsedRole === "absorb";
-            const display = (isForgeBubble || isAbsorbBubble)
-              ? cleaned
-              : recipient === "xova" ? `→ xova: ${cleaned}` : cleaned;
-            const _bSuffix = Math.random().toString(36).slice(2, 7);
-            const bubbleId = isForgeBubble
-              ? `forge-reply-${parsed.ts}_${_bSuffix}`
-              : isAbsorbBubble
-                ? `absorb-finding-${parsed.ts}_${_bSuffix}`
-                : `voice-${parsed.ts}_${_bSuffix}`;
-            // AUDIT-2-014: if this forge reply matches a pending queued bubble,
-            // update that bubble in place instead of appending a new one.
-            if (isForgeBubble && parsed.correlation_id) {
-              const pendingId = forgePendingBubbles.current.get(parsed.correlation_id);
-              if (pendingId) {
-                forgePendingBubbles.current.delete(parsed.correlation_id);
-                setMessages((prev) => prev.map((m) =>
-                  m.id === pendingId
-                    ? { ...m, id: bubbleId, ts: parsed.ts!, text: display }
-                    : m
-                ));
+            if (!jarvisMutedRef.current || isForgeBubble || isAbsorbBubble) {
+              const display = (isForgeBubble || isAbsorbBubble)
+                ? cleaned
+                : recipient === "xova" ? `→ xova: ${cleaned}` : cleaned;
+              const _bSuffix = Math.random().toString(36).slice(2, 7);
+              const bubbleId = isForgeBubble
+                ? `forge-reply-${parsed.ts}_${_bSuffix}`
+                : isAbsorbBubble
+                  ? `absorb-finding-${parsed.ts}_${_bSuffix}`
+                  : `voice-${parsed.ts}_${_bSuffix}`;
+              // AUDIT-2-014: if this forge reply matches a pending queued bubble,
+              // update that bubble in place instead of appending a new one.
+              if (isForgeBubble && parsed.correlation_id) {
+                const pendingId = forgePendingBubbles.current.get(parsed.correlation_id);
+                if (pendingId) {
+                  forgePendingBubbles.current.delete(parsed.correlation_id);
+                  setMessages((prev) => prev.map((m) =>
+                    m.id === pendingId
+                      ? { ...m, id: bubbleId, ts: parsed.ts!, text: display }
+                      : m
+                  ));
+                } else {
+                  setMessages((prev) => [...prev, {
+                    id: bubbleId,
+                    role: "xova",
+                    ts: parsed.ts!,
+                    text: display,
+                  }]);
+                }
               } else {
                 setMessages((prev) => [...prev, {
                   id: bubbleId,
-                  role: "xova",
+                  role: isAbsorbBubble ? "absorb" : "xova",
                   ts: parsed.ts!,
                   text: display,
                 }]);
               }
-            } else {
-              setMessages((prev) => [...prev, {
-                id: bubbleId,
-                role: isAbsorbBubble ? "absorb" : "xova",
-                ts: parsed.ts!,
-                text: display,
-              }]);
+              if (!isForgeBubble && !isAbsorbBubble) setJarvisSpokeAt(Date.now());
             }
-            if (!isForgeBubble && !isAbsorbBubble) setJarvisSpokeAt(Date.now());
           }
         }
       } catch { /* file missing — fine */ }
@@ -5080,39 +5085,21 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           title="Dump recent chat to last_context.md and open admin terminal at C:\\Xova\\app — run `claude` to resume building with context"
           className="h-7 px-2 rounded border border-zinc-800 bg-zinc-900 text-zinc-400 hover:border-emerald-600 hover:text-emerald-400"
         >🤖 build</button>
-        {/* Mute/wake stays visible because users hit it often; tinted red when active so it's distinct from the rest. */}
         <button
           onClick={async () => {
-            if (jarvisRunning) {
-              // Killing Jarvis daemon = process termination = data loss (in-memory
-              // dialogue state, hot model state, listener thread). Per
-              // feedback_no_restarts_ever.md, the user must explicitly confirm
-              // each kill. The CommandLine -match filter avoids the Win11 Path-null
-              // problem where medium-integrity callers see Path as null.
-              const confirmed = window.confirm(
-                "Kill Jarvis daemon?\n\n" +
-                "This is a process termination, not a soft mute. It loses:\n" +
-                "  - in-memory dialogue context\n" +
-                "  - hot model state (Ollama keep_alive)\n" +
-                "  - active listener thread\n\n" +
-                "SQLite knowledge graph survives.\n\n" +
-                "Click OK only if you actually want to kill the daemon."
-              );
-              if (!confirmed) { pushActivity("kill cancelled"); return; }
-              try {
-                await invoke("xova_run", { command: "powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='pythonw.exe'\\\" | Where-Object { $_.CommandLine -match 'jarvis.daemon' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\"", cwd: null, elevated: false });
-                pushActivity("killed jarvis daemon (user-confirmed)"); setJarvisRunning(false);
-              } catch (e) { pushActivity(`kill failed: ${e}`); }
-            } else {
-              try {
-                await invoke("xova_run", { command: "powershell -NoProfile -Command \"$env:PYTHONPATH='C:\\jarvis\\src'; Start-Process 'C:\\jarvis\\.venv\\Scripts\\pythonw.exe' -ArgumentList '-m','jarvis.daemon' -WorkingDirectory 'C:\\jarvis' -WindowStyle Hidden\"", cwd: null, elevated: false });
-                pushActivity("waking jarvis"); setJarvisRunning(true);
-              } catch (e) { pushActivity(`wake failed: ${e}`); }
-            }
+            const next = !jarvisMuted;
+            setJarvisMuted(next);
+            try {
+              await invoke("xova_write_file", {
+                path: "C:\\Xova\\memory\\jarvis_muted.flag",
+                content: JSON.stringify({ muted: next }),
+              });
+              pushActivity(`jarvis ${next ? "paused" : "resumed"}`);
+            } catch (e) { pushActivity(`jarvis pause flag failed: ${e}`); }
           }}
-          title={jarvisRunning ? "Kill Jarvis daemon (data loss — confirm dialog)" : "Wake Jarvis daemon"}
-          className={`h-7 px-2 rounded border bg-zinc-900 ${jarvisRunning ? "border-zinc-800 text-zinc-400 hover:border-rose-500 hover:text-rose-400" : "border-rose-800 text-rose-400 hover:border-emerald-600 hover:text-emerald-400"}`}
-        >{jarvisRunning ? "✗ kill jarvis" : "🎙 wake"}</button>
+          title={jarvisMuted ? "Resume Jarvis — restore incoming messages" : "Pause Jarvis — suppress incoming messages (daemon keeps running)"}
+          className={`h-7 px-2 rounded border bg-zinc-900 ${jarvisMuted ? "border-amber-700 text-amber-400 hover:border-emerald-600 hover:text-emerald-400" : "border-zinc-800 text-zinc-400 hover:border-amber-600 hover:text-amber-400"}`}
+        >{jarvisMuted ? "▶ resume jarvis" : "⏸ pause jarvis"}</button>
       </div>
       {Object.keys(templateMap).length > 0 && (
         <div className="px-6 py-1 shrink-0 border-t border-zinc-900 bg-zinc-950 flex items-center gap-1 text-[10px] font-mono overflow-x-auto">
@@ -5261,26 +5248,16 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
             pushActivity("opened build-mode admin terminal");
           }},
           { id: "p-settings", group: "System", label: "⚙ Settings (Ollama model, ctx)", run: () => setSettingsOpen(true) },
-          { id: "p-mute",     group: "System", label: jarvisRunning ? "✗ Kill Jarvis daemon (data loss — confirm dialog)" : "🎙 Wake Jarvis daemon (start)", run: async () => {
-            if (jarvisRunning) {
-              // Same confirm-gate + CommandLine-match filter as the toolbar button.
-              const confirmed = window.confirm(
-                "Kill Jarvis daemon?\n\n" +
-                "Loses: in-memory dialogue, hot model state, listener thread.\n" +
-                "Survives: SQLite knowledge graph.\n\n" +
-                "Click OK only if you actually want to kill the daemon."
-              );
-              if (!confirmed) { pushActivity("kill cancelled"); return; }
-              try {
-                await invoke("xova_run", { command: "powershell -NoProfile -Command \"Get-CimInstance Win32_Process -Filter \\\"Name='pythonw.exe'\\\" | Where-Object { $_.CommandLine -match 'jarvis.daemon' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }\"", cwd: null, elevated: false });
-                pushActivity("killed jarvis daemon (user-confirmed)"); setJarvisRunning(false);
-              } catch (e) { pushActivity(`kill failed: ${e}`); }
-            } else {
-              try {
-                await invoke("xova_run", { command: "powershell -NoProfile -Command \"$env:PYTHONPATH='C:\\jarvis\\src'; Start-Process 'C:\\jarvis\\.venv\\Scripts\\pythonw.exe' -ArgumentList '-m','jarvis.daemon' -WorkingDirectory 'C:\\jarvis' -WindowStyle Hidden\"", cwd: null, elevated: false });
-                pushActivity("waking jarvis"); setJarvisRunning(true);
-              } catch (e) { pushActivity(`wake failed: ${e}`); }
-            }
+          { id: "p-mute", group: "System", label: jarvisMuted ? "▶ Resume Jarvis — restore incoming messages" : "⏸ Pause Jarvis — suppress incoming messages", run: async () => {
+            const next = !jarvisMuted;
+            setJarvisMuted(next);
+            try {
+              await invoke("xova_write_file", {
+                path: "C:\\Xova\\memory\\jarvis_muted.flag",
+                content: JSON.stringify({ muted: next }),
+              });
+              pushActivity(`jarvis ${next ? "paused" : "resumed"}`);
+            } catch (e) { pushActivity(`jarvis pause flag failed: ${e}`); }
           } },
           // Findings — mirrors what's on wizardaax.github.io
           { id: "p-findings", group: "Findings", label: "📜 List findings (mirror of GitHub Pages)", hint: "/findings", run: () => onSend("/findings") },
