@@ -185,6 +185,30 @@ GOAL_PROPOSER       = r"C:\Xova\plugins\goal_proposer.py"
 PROPOSE_EVERY_N     = 200  # goal proposal every 200 cycles (~3 hr) when no sub-goals active
 _last_dream_ts: float = 0.0
 
+# AEON v2.1 live gate — rolling in-process coherence history.
+# Captured after each cycle and fed to aeon_gate_from_coherence_history()
+# so the broker slot xova.aeon_last_run.dynamic_gate reflects live cycle
+# behaviour instead of documented defaults. Cap is generous enough for
+# a 5-cycle MA + plenty of σ history (~25 minutes at 60s cycles).
+_coherence_history: list[float] = []
+COHERENCE_HISTORY_CAP: int = 30
+
+
+def _aeon_gate_from_history(history: list[float], dt: float) -> dict | None:
+    """Lazy-import aeon_engine and compute a live v2.1 dynamic gate.
+
+    Returns None if aeon_engine isn't reachable — callers should fall back
+    to the documented gate from agent_07's payload.
+    """
+    try:
+        zpath = r"D:\github\wizardaax\ziltrix-sch-core"
+        if zpath not in sys.path:
+            sys.path.insert(0, zpath)
+        import aeon_engine  # type: ignore[import-not-found]
+        return aeon_engine.aeon_gate_from_coherence_history(history, dt=dt)
+    except Exception:
+        return None
+
 
 def _read_forge_status() -> tuple[bool, float]:
     """Read Forge node alive + coherence_weight from agent_board. Safe fallback."""
@@ -698,7 +722,17 @@ def _humanize(result: dict) -> str:
         rel_err = val.get("max_rel_err", None)
         val_str = (f" · validated ✓ err={rel_err:.2%}" if (matched and rel_err is not None)
                    else " · validation FAIL" if val else "")
-        return f"AEON field · thrust {thrust:.3e} N{val_str}"
+        # v2.1 surface: dynamic gate state + brane refraction shift
+        gate = result.get("dynamic_gate") or {}
+        gate_str = (f" · gate {'OPEN' if gate.get('gated_active') else 'closed'}"
+                    if gate else "")
+        brane = result.get("brane_geometry") or {}
+        brane_str = (f" · θ {brane.get('snell_angle_base_deg', 0):.1f}°→"
+                     f"{brane.get('snell_angle_dynamic_deg', 0):.1f}°"
+                     if brane else "")
+        version = result.get("version", "")
+        ver_str = f" [{version}]" if version else ""
+        return f"AEON field{ver_str} · thrust {thrust:.3e} N{val_str}{gate_str}{brane_str}"
     if "point_count" in result or "points" in result:
         n = result.get("point_count", len(result.get("points", [])))
         return f"field weave · {n} phyllotaxis points"
@@ -733,6 +767,24 @@ def _humanize(result: dict) -> str:
 
 
 # ── patch applicator ──────────────────────────────────────────────────────────
+
+def _deposit_before_evo_write(fp: str, target: str, cat: str) -> None:
+    """Deposit fp to forge trash before EvolutionEngine overwrites it.
+
+    Per CLAUDE.md RULE 4: every data-loss op deposits to trash first.
+    Uses the existing trash_keeper CLI so all agents share one ledger.
+    Silent on failure — never block a patch on trash unavailability,
+    but the live mesh_flags evolutionEnabled gate is the primary guard.
+    """
+    try:
+        subprocess.run(
+            ["python", r"D:\temp\trash_keeper.py", "deposit", "forge", fp,
+             f"evo-patch pre-write target={target} category={cat}", "forge"],
+            capture_output=True, check=False, timeout=10,
+        )
+    except Exception:
+        pass
+
 
 def _try_apply_patch(change: dict) -> str:
     """
@@ -842,6 +894,7 @@ def _try_apply_patch(change: dict) -> str:
                 if not replaced:
                     new_lines.append(line)
             if modified:
+                _deposit_before_evo_write(fp, target, cat)
                 with open(fp, "w", encoding="utf-8") as fh:
                     fh.writelines(new_lines)
                 patched_file = fp
@@ -1121,6 +1174,15 @@ def main() -> None:
                 result = cycle.run(goal)
                 _last_aeon_quality: float | None = None  # Sprint 6: AEON→UCB direct feedback
 
+                # AEON v2.1 live gate: append this cycle's coherence to the
+                # rolling history (kept in-process; not persisted, since the
+                # whole point is to reflect the LIVE running loop). In-place
+                # del so we mutate the module-level list rather than rebind
+                # the name inside main() (which would make it local).
+                _coherence_history.append(result.average_coherence)
+                if len(_coherence_history) > COHERENCE_HISTORY_CAP:
+                    del _coherence_history[:-COHERENCE_HISTORY_CAP]
+
                 for r in result.results:
                     raw_agent        = r.get("agent", "agent-01")
                     agent_id, label  = AGENT_LABELS.get(raw_agent, ("??", raw_agent))
@@ -1151,6 +1213,14 @@ def main() -> None:
                         _err_sc = max(0.0, 1.0 - _rel_err / 0.1)
                         _dep_sc = min(1.0, _n_pts / 10.0)
                         _aeon_quality = round(0.4 * _val_sc + 0.3 * _err_sc + 0.2 * _dep_sc + 0.1, 4)
+                        # AEON v2.1 live gate: compute from in-process
+                        # coherence history; fall back to agent_07's
+                        # documented gate if aeon_engine import fails.
+                        _live_gate = _aeon_gate_from_history(
+                            _coherence_history, dt=float(CYCLE_INTERVAL)
+                        )
+                        _documented_gate = r.get("dynamic_gate")
+                        _gate_for_slot = _live_gate or _documented_gate
                         _write_context_slot("xova.aeon_last_run", {
                             "cycle":          cycle_num,
                             "thrust_n":       series[0].get("thrust") if series else None,
@@ -1161,7 +1231,13 @@ def main() -> None:
                             "quality_score":  _aeon_quality,
                             "peak_thrust":    _peak,
                             "n_steps":        _n_pts,
-                            "ts":             time.time(),
+                            # AEON-M v2.1: surface dynamic gate + brane geometry
+                            "version":            r.get("version", "v2.1"),
+                            "brane_geometry":     r.get("brane_geometry"),
+                            "dynamic_gate":       _gate_for_slot,
+                            "dynamic_gate_documented": _documented_gate,
+                            "coherence_history_n": len(_coherence_history),
+                            "ts":                 time.time(),
                         })
                         _log(f"aeon: quality={_aeon_quality:.3f} peak={_peak:.3e} n={_n_pts}")
                         _last_aeon_quality = _aeon_quality

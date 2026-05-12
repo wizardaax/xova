@@ -20,6 +20,21 @@ interface Sce88State {
   coherence: number;
 }
 
+interface AeonState {
+  gated: boolean;
+  tau: number | null;
+  tauAbove: boolean;
+  dpsiDt: number | null;
+  dpsiAbove: boolean;
+  source: string;       // "live" | "documented" | "insufficient_history" | "insufficient_ma_history"
+  validated: boolean;
+  peakThrust: number | null;
+  version: string;
+  cycle: number;
+  historyN: number;
+  qualityScore: number | null;
+}
+
 interface StatusBarProps {
   isBusy: boolean;
   jarvisSpoke: boolean;
@@ -39,6 +54,7 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode, currentModel,
   const [mesh, setMesh] = useState<MeshState | null>(null);
   const [forgeBusy, setForgeBusy] = useState(false);
   const [sce88, setSce88] = useState<Sce88State | null>(null);
+  const [aeon, setAeon] = useState<AeonState | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const modelMenuRef = useRef<HTMLDivElement>(null);
 
@@ -106,12 +122,14 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode, currentModel,
     const GATE_CMD = `python "C:\\Xova\\plugins\\sce88_gate.py" --context statusbar`;
     const tickSce88 = async () => {
       try {
-        // Read coherence from context_broker xova.sce88_status slot
+        // Read coherence from context_broker xova.sce88_status slot.
+        // Broker structure is { version, updated_at, slots: { <key>: { value, ts, ttl, tags } } }
+        // — slots are nested under top-level "slots", not flat on the root.
         let coherence = 0.7;
         try {
           const brokerRaw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\context_broker.json" });
-          const broker = JSON.parse(brokerRaw) as Record<string, { value?: unknown }>;
-          const slot = broker["xova.sce88_status"] ?? broker["mesh.sce88_status"];
+          const broker = JSON.parse(brokerRaw) as { slots?: Record<string, { value?: unknown }> };
+          const slot = broker.slots?.["xova.sce88_status"] ?? broker.slots?.["mesh.sce88_status"];
           const v = slot?.value;
           if (typeof v === "object" && v !== null && "coherence" in v && typeof (v as Record<string, unknown>).coherence === "number") {
             coherence = (v as Record<string, unknown>).coherence as number;
@@ -134,6 +152,48 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode, currentModel,
     };
     tickSce88();
     const handle = window.setInterval(tickSce88, 30_000);
+    return () => { cancelled = true; window.clearInterval(handle); };
+  }, []);
+
+  // AEON v2.1 gate indicator — reads xova.aeon_last_run from context_broker.
+  // Polls every 10s. Surfaces dynamic gate (live or documented), validation
+  // status, and quality score. Gate fires when system shows directed motion
+  // (τ above threshold AND |dψ/dt| above 1.5σ noise floor).
+  useEffect(() => {
+    let cancelled = false;
+    const tickAeon = async () => {
+      try {
+        const brokerRaw = await invoke<string>("xova_read_file", { path: "C:\\Xova\\memory\\context_broker.json" });
+        const broker = JSON.parse(brokerRaw) as { slots?: Record<string, { value?: Record<string, unknown> }> };
+        const slot = broker.slots?.["xova.aeon_last_run"];
+        const v = slot?.value;
+        if (!v || typeof v !== "object") {
+          if (!cancelled) setAeon(null);
+          return;
+        }
+        const gate = (v.dynamic_gate as Record<string, unknown> | undefined) ?? undefined;
+        if (!gate) {
+          if (!cancelled) setAeon(null);
+          return;
+        }
+        if (!cancelled) setAeon({
+          gated:        Boolean(gate.gated_active),
+          tau:          typeof gate.tau === "number" ? gate.tau : null,
+          tauAbove:     Boolean(gate.tau_above),
+          dpsiDt:       typeof gate.dpsi_dt === "number" ? gate.dpsi_dt : null,
+          dpsiAbove:    Boolean(gate.dpsi_dt_above),
+          source:       typeof gate.source === "string" ? gate.source : "documented",
+          validated:    Boolean(v.validated),
+          peakThrust:   typeof v.peak_thrust === "number" ? v.peak_thrust : null,
+          version:      typeof v.version === "string" ? (v.version as string) : "v2.1",
+          cycle:        typeof v.cycle === "number" ? v.cycle : 0,
+          historyN:     typeof v.coherence_history_n === "number" ? v.coherence_history_n : 0,
+          qualityScore: typeof v.quality_score === "number" ? v.quality_score : null,
+        });
+      } catch { /* broker not written yet */ }
+    };
+    tickAeon();
+    const handle = window.setInterval(tickAeon, 10_000);
     return () => { cancelled = true; window.clearInterval(handle); };
   }, []);
 
@@ -305,6 +365,35 @@ export function StatusBar({ isBusy, jarvisSpoke, phase, forgeMode, currentModel,
           >
             <span>{sce88.passed ? "🛡" : "⚠"}</span>
             <span>sce-88{!sce88.passed ? ` ✗${sce88.violations}` : " ✓"}</span>
+          </span>
+        </>
+      )}
+      {aeon && (
+        <>
+          <span className="text-zinc-800">·</span>
+          <span
+            title={
+              `AEON ${aeon.version} · cycle ${aeon.cycle}\n` +
+              `gate: ${aeon.gated ? "OPEN" : "closed"} (source: ${aeon.source})\n` +
+              `τ = ${aeon.tau != null ? aeon.tau.toFixed(4) : "?"}  ${aeon.tauAbove ? "✓" : "✗"} above 0.007\n` +
+              `dψ/dt = ${aeon.dpsiDt != null ? aeon.dpsiDt.toExponential(2) : "?"}  ${aeon.dpsiAbove ? "✓" : "✗"} above 1.5σ\n` +
+              `validated: ${aeon.validated ? "✓" : "✗"}` +
+              (aeon.peakThrust != null ? ` · peak thrust ${aeon.peakThrust.toExponential(2)} N` : "") +
+              (aeon.qualityScore != null ? `\nquality: ${aeon.qualityScore.toFixed(3)}` : "") +
+              `\nhistory: ${aeon.historyN} cycles`
+            }
+            className={`flex items-center gap-1 uppercase tracking-wider text-[10px] ${
+              aeon.gated && aeon.validated ? "text-emerald-400"
+              : aeon.gated ? "text-amber-400"
+              : aeon.source === "live" ? "text-zinc-400"
+              : "text-zinc-600"
+            }`}
+          >
+            <span>🜂</span>
+            <span>aeon {aeon.gated ? "OPEN" : "closed"}</span>
+            {aeon.tau != null && aeon.source === "live" && (
+              <span className="text-zinc-600 normal-case">τ {aeon.tau.toFixed(3)}</span>
+            )}
           </span>
         </>
       )}
