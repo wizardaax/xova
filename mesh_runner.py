@@ -1202,6 +1202,9 @@ def main() -> None:
                     "goal":        goal,
                     "ts":          time.time(),
                 })
+                _write_context_slot("agents.coherence_ma", {
+                    "ma": round(result.average_coherence, 4),
+                })
 
                 # Per-agent self-eval (in-process, one store write for all 13 agents)
                 _eval_agents_batch(result.results, goal, active_goal_id or "")
