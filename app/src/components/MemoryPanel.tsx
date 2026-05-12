@@ -45,11 +45,16 @@ export function MemoryPanel({ onClose }: MemoryPanelProps) {
 
   useEffect(() => { refresh(); }, []);
 
-  const remove = async (id: string, name: string) => {
-    if (!window.confirm(`Delete memory node "${name}"?\nThis is permanent — Jarvis will no longer recall it.`)) return;
+  const remove = async (node: MemoryNode) => {
+    if (!window.confirm(`Delete memory node "${node.name}"?\nA copy will be saved to C:\\Xova\\trash before removal.`)) return;
     try {
-      await invoke("xova_memory_delete", { id });
-      setNodes((prev) => prev.filter((n) => n.id !== id));
+      const ts = Date.now();
+      await invoke("xova_write_file", {
+        path: `C:\\Xova\\trash\\memory_node_${node.id}_${ts}.json`,
+        content: JSON.stringify({ deleted_at: new Date(ts).toISOString(), ...node }, null, 2),
+      });
+      await invoke("xova_memory_delete", { id: node.id });
+      setNodes((prev) => prev.filter((n) => n.id !== node.id));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -82,7 +87,7 @@ export function MemoryPanel({ onClose }: MemoryPanelProps) {
                 <span className="text-emerald-300 font-semibold truncate flex-1">{n.name}</span>
                 <span className="text-zinc-600">×{n.access_count}</span>
                 <button
-                  onClick={() => remove(n.id, n.name)}
+                  onClick={() => remove(n)}
                   title="Delete this memory node"
                   className="w-5 h-5 flex items-center justify-center text-zinc-500 hover:text-red-400"
                 >
