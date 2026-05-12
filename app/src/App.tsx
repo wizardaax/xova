@@ -1906,6 +1906,14 @@ function App() {
     }
     if (slash === "/forget-all-facts") {
       if (!window.confirm(`Erase all ${standingFacts.length} standing facts? Xova will start over.`)) return;
+      try {
+        const ts = Date.now();
+        const current = await loadMemory<string[]>("xova_standing_facts") ?? [];
+        await invoke("xova_write_file", {
+          path: `C:\\Xova\\trash\\standing_facts_${ts}.json`,
+          content: JSON.stringify({ deleted_at: new Date(ts).toISOString(), facts: current }, null, 2),
+        });
+      } catch {}
       setStandingFacts([]);
       try { await saveMemory("xova_standing_facts", []); } catch {}
       pushActivity("standing facts wiped");
