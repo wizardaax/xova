@@ -324,6 +324,9 @@ def _domain_work(agent: str, broker: dict) -> str:
             coh = _slot_val(broker, "agents.coherence_ma") or {}
             trend = _slot_val(broker, "agents.coherence_trend") or "unknown"
             ma = coh.get("ma", "?") if isinstance(coh, dict) else coh
+            if ma == "?":
+                sce = _slot_val(broker, "xova.sce88_status") or {}
+                ma = sce.get("coherence", "?") if isinstance(sce, dict) else "?"
             return f"coherence_ma={ma} trend={trend}"
 
         if agent == "memory":
@@ -355,7 +358,10 @@ def _domain_work(agent: str, broker: dict) -> str:
 
         if agent == "evolution":
             ci = _slot_val(broker, "xova.ci_health") or {}
-            return f"ci_health={ci.get('status', 'unknown') if isinstance(ci, dict) else ci}"
+            if isinstance(ci, dict) and ci:
+                status = "ok" if ci.get("ok") else "fail"
+                return f"ci_health={status} passed={ci.get('total_passed','?')} failed={ci.get('total_failed','?')}"
+            return "ci_health=unknown (slot null)"
 
         if agent == "phase":
             phase = _slot_val(broker, "xova.lucas_phase") or {}
