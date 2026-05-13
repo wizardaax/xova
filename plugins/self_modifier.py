@@ -13,6 +13,10 @@ Actions:
   pending   show only pending (approved, not yet applied)
   status    rate-limit counters for today
   apply     --id <prop-id>   mark a proposal as applied (Adam runs this)
+  obsolete  --id <prop-id> --reason "..."
+            mark a pending proposal as obsolete (eg. upstream fix made the
+            gap detection a known false-positive). Cannot obsolete applied/
+            vetoed/already-obsolete entries — preserves audit truthfulness.
 
 Rate limit: max 3 proposals per day. Dedup: skip identical file+description.
 """
@@ -190,9 +194,10 @@ def action_status() -> dict:
     now   = time.time()
     today = [t for t in state["proposals_today"] if t > now - 86400]
     store = _load_proposals()
-    pending = sum(1 for p in store["proposals"] if p.get("status") == "pending")
-    vetoed  = sum(1 for p in store["proposals"] if p.get("status") == "vetoed")
-    applied = sum(1 for p in store["proposals"] if p.get("status") == "applied")
+    pending  = sum(1 for p in store["proposals"] if p.get("status") == "pending")
+    vetoed   = sum(1 for p in store["proposals"] if p.get("status") == "vetoed")
+    applied  = sum(1 for p in store["proposals"] if p.get("status") == "applied")
+    obsolete = sum(1 for p in store["proposals"] if p.get("status") == "obsolete")
     return {
         "ok":                True,
         "proposals_today":   len(today),
@@ -202,6 +207,7 @@ def action_status() -> dict:
         "total_pending":     pending,
         "total_vetoed":      vetoed,
         "total_applied":     applied,
+        "total_obsolete":    obsolete,
     }
 
 
@@ -214,6 +220,8 @@ def action_apply(prop_id: str) -> dict:
                 return {"ok": False, "error": "already applied"}
             if p.get("status") == "vetoed":
                 return {"ok": False, "error": "proposal was vetoed — cannot apply"}
+            if p.get("status") == "obsolete":
+                return {"ok": False, "error": "proposal was marked obsolete — cannot apply"}
             p["status"]     = "applied"
             p["applied_at"] = time.time()
             _save_proposals(store)
@@ -226,17 +234,48 @@ def action_apply(prop_id: str) -> dict:
     return {"ok": False, "error": f"proposal {prop_id} not found"}
 
 
+def action_obsolete(prop_id: str, reason: str) -> dict:
+    """Mark a pending proposal as obsolete (eg. after an upstream bug fix made
+    the gap detection a known false-positive). Requires a reason for audit.
+
+    Cannot obsolete an already-applied/vetoed/obsolete proposal — preserves
+    the truthful audit trail. Records `obsoleted_at` timestamp + `obsolete_reason`.
+    """
+    if not reason.strip():
+        return {"ok": False, "error": "reason is required for obsolete (audit trail)"}
+    store = _load_proposals()
+    for p in store["proposals"]:
+        if p.get("id") == prop_id:
+            cur = p.get("status")
+            if cur in ("applied", "vetoed", "obsolete"):
+                return {"ok": False, "error": f"proposal status is already {cur} — cannot obsolete"}
+            p["status"]           = "obsolete"
+            p["obsoleted_at"]     = time.time()
+            p["obsolete_reason"]  = reason.strip()[:300]
+            _save_proposals(store)
+            return {
+                "ok":              True,
+                "id":              prop_id,
+                "file_path":       p.get("file_path"),
+                "obsoleted_at":    p["obsoleted_at"],
+                "obsolete_reason": p["obsolete_reason"],
+            }
+    return {"ok": False, "error": f"proposal {prop_id} not found"}
+
+
 # ── CLI ───────────────────────────────────────────────────────────────────────
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--action",      default="status",
-                    choices=["propose", "list", "pending", "status", "apply"])
+                    choices=["propose", "list", "pending", "status", "apply", "obsolete"])
     ap.add_argument("--file",             default="")
     ap.add_argument("--description",      default="")
     ap.add_argument("--description-file", default="")
     ap.add_argument("--proposer",         default="mesh")
     ap.add_argument("--id",               default="")
+    ap.add_argument("--reason",           default="",
+                    help="audit reason required for --action obsolete")
     args = ap.parse_args()
     sys.stdout.reconfigure(encoding="utf-8")
 
@@ -255,6 +294,8 @@ def main() -> None:
         result = action_list(filter_status="pending")
     elif args.action == "apply":
         result = action_apply(args.id.strip())
+    elif args.action == "obsolete":
+        result = action_obsolete(args.id.strip(), args.reason)
     else:
         result = action_status()
 
