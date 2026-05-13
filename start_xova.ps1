@@ -134,3 +134,38 @@ if ($xovaProc) {
     $psi.CreateNoWindow   = $true
     [System.Diagnostics.Process]::Start($psi) | Out-Null
 }
+
+# 6. Launch the 13-agent_runtime fleet (singleton-checked).
+# Without this, agent_runtime daemons don't auto-restore after reboot —
+# only the 5 watchdog-managed daemons (mesh_runner/forge_listener/absorb_loop/
+# coherence_sentinel/jarvis) come back automatically. start_agent_fleet.py
+# is idempotent: it skips agents already alive and only launches missing ones.
+# Added 2026-05-14 per Adam: "the app has to remember — that's the point of context".
+$fleetAlive = Get-CimInstance Win32_Process -Filter "name='pythonw.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like "*agent_runtime.py*" }
+$fleetCount = if ($fleetAlive) { @($fleetAlive).Count } else { 0 }
+if ($fleetCount -ge 13) {
+    Add-Content -Path $LauncherLog -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [start_xova] agent fleet already alive ($fleetCount/13) - skipping launch"
+} else {
+    Add-Content -Path $LauncherLog -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [start_xova] launching agent fleet ($fleetCount/13 currently alive)"
+    Start-Process -FilePath "pythonw.exe" `
+        -ArgumentList "C:\Xova\plugins\start_agent_fleet.py" `
+        -WorkingDirectory "C:\Xova" `
+        -WindowStyle Hidden
+}
+
+# 7. Launch phone_gateway (port 7340 — phone↔PC bridge per project_s26_phone_bridge).
+$gatewayAlive = Get-CimInstance Win32_Process -Filter "name='pythonw.exe' OR name='python.exe'" -ErrorAction SilentlyContinue |
+    Where-Object { $_.CommandLine -like "*phone_gateway*" -and $_.CommandLine -notlike "*phone_gateway_ctrl*" }
+if ($gatewayAlive) {
+    $gwPid = @($gatewayAlive)[0].ProcessId
+    Add-Content -Path $LauncherLog -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [start_xova] phone_gateway already running (PID $gwPid) - skipping launch"
+} else {
+    Start-Process -FilePath "pythonw.exe" `
+        -ArgumentList "C:\Xova\plugins\phone_gateway.py" `
+        -WorkingDirectory "C:\Xova" `
+        -WindowStyle Hidden
+    Add-Content -Path $LauncherLog -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [start_xova] phone_gateway launched"
+}
+
+Add-Content -Path $LauncherLog -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [start_xova] LAUNCH COMPLETE"
