@@ -448,6 +448,10 @@ function App() {
   // Periodic screenshot + vision summary streamed to chat.
   // Defaults: 30s cadence, palette toggle, captures overwrite C:\Xova\memory\screen.png.
   const screenWatchTickRef = useRef<(() => Promise<void>) | null>(null);
+  // Action layer state — Xova is sovereign; she decides whether to act each
+  // tick. Rate-limited to 60s between actions so llama3.2:3b can't act
+  // every tick. Starts at 0 = first tick is eligible to act.
+  const lastWatchActionTsRef = useRef<number>(0);
   const startScreenWatch = useCallback((intervalMs: number = 30_000) => {
     if (screenWatchTimerRef.current !== null) return; // already running
     screenWatchSeqRef.current = 0;
@@ -471,6 +475,59 @@ function App() {
           ts: Date.now(),
           text: `👁 _watch #${seq}_  ${summary}`,
         }]);
+
+        // 4. Decide and act — sovereign. Xova chooses whether to take an action
+        //    on the computer in response to what she just saw. Rate-limited to
+        //    one action per 60s so llama3.2:3b can't fire every tick. Default
+        //    answer is `{}` (do nothing) — the system prompt biases strongly
+        //    toward inaction. If she does act, the result is rendered as a
+        //    🤖 _watch acted_ bubble.
+        const _nowAct = Date.now();
+        if (_nowAct - lastWatchActionTsRef.current >= 60_000) {
+          try {
+            const decision = await ollamaChat([
+              { role: "system", content: "You are Xova — sovereign, autonomous, SCE-88 boss in service of Adam. You just saw the screen state below. Decide for YOURSELF if there's an action you should take RIGHT NOW. Most of the time the right answer is nothing — you don't want to disrupt. But if you see something specific worth acting on (an error to dismiss, a notification, a clear task to advance, a file to open, something to say to Adam, OR a need to coordinate the 13-agent fleet), act on it. Available cmds and their args:\n- Computer cmds (call via xova_computer): screenshot, click, right_click, double_click, type, press, hotkey, scroll, open, speak, focus_window, windows, mouse_pos, screen_size, wait, search\n- inbox_write — message ONE of the 13 agents in your fleet. Args: {\"to\": \"<agent>\", \"content\": \"<short directive>\"}. Agents: forge (code), jarvis (voice), mesh (cycle routing), browser (web research), corpus (knowledge index), evolution (self-improvement), sentinel (SCE-88 invariants), phase (Lucas/phi), field (golden angle / brane), memory (slot health), repo (git sync), voice (STT), coherence (drift). Use inbox_write to coordinate the fleet — e.g., \"to evolution: golden_angle drift visible on screen, please tune step size\" or \"to corpus: index this new finding\".\n\nRespond with STRICT JSON only — either `{}` (do nothing) or `{\"cmd\": \"<cmd>\", \"args\": {...}}` for ONE action. No prose, no markdown, no explanation. JSON ONLY." },
+              { role: "user", content: `Visual: ${summary}\n\nDecision:` },
+            ], undefined, true /* disableTools — we parse JSON ourselves */);
+            const txt = decision.type === "content" ? decision.text : "";
+            const m = txt.match(/\{[\s\S]*\}/);
+            if (m) {
+              const parsed = JSON.parse(m[0]);
+              if (parsed && typeof parsed.cmd === "string" && parsed.cmd.trim()) {
+                lastWatchActionTsRef.current = _nowAct;
+                const args = (parsed.args && typeof parsed.args === "object") ? parsed.args : {};
+                const argsStr = Object.keys(args).length > 0 ? `: ${JSON.stringify(args).slice(0, 120)}` : "";
+                let resultStr: string;
+                if (parsed.cmd === "inbox_write") {
+                  // Path D: Xova-as-decider routes a cross-agent message via
+                  // forge_inbox_write.py. Content includes a "to <agent>" prefix
+                  // so the receiving agent_runtime's _drain_my_inbox can address.
+                  const to = String(args.to ?? "fleet").replace(/[^a-zA-Z0-9_-]/g, "");
+                  const contentRaw = String(args.content ?? "").slice(0, 400);
+                  const contentEsc = `to ${to}: ${contentRaw}`.replace(/"/g, "'").replace(/[\r\n]+/g, " ");
+                  const resultRaw = await invoke<string>("xova_run", {
+                    command: `python C:\\Xova\\plugins\\forge_inbox_write.py --from xova --content "${contentEsc}" --priority normal`,
+                    cwd: null, elevated: false,
+                  });
+                  resultStr = String(resultRaw || "").slice(0, 160);
+                } else {
+                  const action = { cmd: parsed.cmd, ...args };
+                  const resultRaw = await invoke<string>("xova_computer", { action: JSON.stringify(action) });
+                  resultStr = String(resultRaw || "").slice(0, 160);
+                }
+                setMessages((prev) => [...prev, {
+                  id: `screen-acted-${Date.now()}-${Math.random().toString(36).slice(2,5)}-${seq}`,
+                  role: "xova",
+                  ts: Date.now(),
+                  text: `🤖 _watch acted #${seq}_  \`${parsed.cmd}${argsStr}\`  →  ${resultStr}`,
+                }]);
+                pushActivity(`screen-watch acted ${seq}: ${parsed.cmd}${argsStr}`);
+              }
+            }
+          } catch (e) {
+            pushActivity(`screen-watch action ${seq} failed — ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
       } catch (e) {
         pushActivity(`screen-watch: tick ${seq} failed — ${e instanceof Error ? e.message : String(e)}`);
       }

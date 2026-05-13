@@ -347,6 +347,70 @@ def _tool_computer_task(agent: str, goal: str, broker: dict) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+# ── deterministic cross-agent routing (Path A) ──────────────────────────────
+# When an agent's deterministic domain check surfaces actionable signal
+# (drift>0, failures>0, stale, gap, error, blocked), it auto-posts ONE
+# cross-agent message to forge_hook_inbox.jsonl. Target agent is fixed per
+# specialty — keeps coordination edges narrow and predictable. No LLM in
+# this path; runs even when Ollama is dead.
+
+_CROSS_POST_TARGET = {
+    "field":     "evolution",  # field drift → ask evolution to tune
+    "evolution": "repo",       # build/test issues → ask repo to audit
+    "corpus":    "browser",    # knowledge gap → ask browser to research
+    "phase":     "coherence",  # phase drift → coherence cross-checks
+    "sentinel":  "evolution",  # SCE-88 violations → evolution to patch
+    "coherence": "sentinel",   # coherence drop → sentinel audits invariants
+    "mesh":      "forge",      # cycle issues → forge investigates
+    "browser":   "corpus",     # web finding → corpus indexes
+    "forge":     "evolution",  # forge task overload → evolution writes helper
+    "memory":    "repo",       # stale slots → repo refreshes
+    "repo":      "evolution",  # repo divergence → evolution patches
+    "voice":     "jarvis",
+    "jarvis":    "voice",
+}
+
+
+def _summary_is_actionable(summary: str) -> bool:
+    """Strict filter — fires only when there's a real numeric signal.
+
+    Pre-tighten version matched substring "stale" anywhere, which caught
+    benign reports like "stale_1h=0" (count of stale slots) and induced
+    cross-post + Xova report → Ollama feedback. This version requires
+    either explicit error/blocked keywords OR a metric=N pair where N > 0.
+    """
+    import re
+    s = summary.lower()
+    if "error" in s or "blocked" in s:
+        return True
+    # metric=N pattern — N must be strictly > 0 to fire.
+    # Catches fail=N, failed=N, drift=N, drift=0.5, gap=N, gaps=N,
+    # stale=N, stale_1h=N, stale_24h=N. Benign zeros do NOT fire.
+    m = re.search(r"(fail(?:ed)?|drift|gap[s]?|stale[_a-z0-9]*)\s*=\s*(\d+(?:\.\d+)?)", s)
+    if m and float(m.group(2)) > 0:
+        return True
+    return False
+
+
+def _maybe_cross_post(agent: str, summary: str) -> None:
+    """Path A: deterministic cross-agent inbox post when domain signal is actionable.
+
+    Routes from this agent to a fixed peer via _CROSS_POST_TARGET map. Posts
+    one short structured message to forge_hook_inbox.jsonl which the peer's
+    _drain_my_inbox will pick up on its next cycle. Silent on failure.
+    """
+    if not summary or summary.strip() in {"", "ok"}:
+        return
+    if not _summary_is_actionable(summary):
+        return
+    target = _CROSS_POST_TARGET.get(agent, "forge")
+    content = f"from agent-{agent}: {summary[:200]} | request: agent-{target} please investigate"
+    try:
+        _tool_inbox_write(agent, content, "normal")
+    except Exception:
+        pass
+
+
 def _tool_inbox_write(agent: str, content: str, priority: str = "normal") -> dict:
     return _run_plugin("forge_inbox_write.py",
                        "--from", f"agent-{_agent_num(agent):02d}-{agent}",
@@ -508,6 +572,10 @@ def run_cycle(agent: str) -> dict:
     # Report to Xova — only report something significant, not every standby
     if any(w in done_summary.lower() for w in ("fail", "error", "queued", "pending", "stale")):
         _tool_report(f"[{agent}] {done_summary[:200]}")
+
+    # Path A: deterministic cross-agent post when there's actionable signal.
+    # Runs every cycle but only fires when the filter says so — no spam.
+    _maybe_cross_post(agent, done_summary)
 
     result = {
         "ok":      True,
