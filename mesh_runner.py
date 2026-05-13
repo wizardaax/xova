@@ -168,7 +168,9 @@ FIELD_WEAVE         = r"C:\Xova\plugins\field_weave.py"
 TERNARY_EVAL        = r"C:\Xova\plugins\ternary_eval.py"
 CORPUS_RECALL       = r"C:\Xova\plugins\corpus_recall.py"
 REPO_SYNC           = r"C:\Xova\plugins\repo_sync.py"
+AGENT_MEMORY_WRITER = r"C:\Xova\plugins\agent_memory_writer.py"
 SCAN_EVERY_N        = 3    # task_initiator scan every N cycles
+AGENT_MEM_EVERY_N   = 5    # fan broker+feed to per-agent repo memory every 5 cycles (~5 min)
 CURIOSITY_EVERY_N   = 20   # curiosity scan every N cycles (~20 min)
 CI_EVERY_N          = 30   # CI health scan every 30 cycles (~30 min)
 LUCAS_EVERY_N       = 25   # Lucas phase analysis every 25 cycles (~25 min)
@@ -289,6 +291,24 @@ def _run_task_scan() -> None:
         )
     except Exception as exc:
         _log(f"task scan error: {exc}")
+
+
+def _run_agent_memory_writer() -> None:
+    """Fan current broker + recent mesh_feed events into per-agent repo memory.
+
+    Writes state.json / observations.jsonl / summary.md into each of the 13
+    xova-agent-NN-name/memory/ dirs. All bounded (OBS_CAP=500, summary soft
+    cap 32KB). state.json + observations.jsonl are gitignored; summary.md
+    is durable and commit-eligible.
+    """
+    try:
+        subprocess.Popen(
+            [sys.executable, AGENT_MEMORY_WRITER, "--action", "run"],
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except Exception as exc:
+        _log(f"agent memory writer error: {exc}")
 
 
 def _run_curiosity_scan() -> None:
@@ -1513,6 +1533,13 @@ def main() -> None:
         # Task initiator: scan for triggers every SCAN_EVERY_N cycles
         if cycle_num % SCAN_EVERY_N == 0:
             _run_task_scan()
+
+        # Agent memory writer: fan broker + feed into per-agent repo memory
+        # dirs every AGENT_MEM_EVERY_N cycles. Bounded writes (OBS_CAP=500
+        # lines, summary.md soft cap 32KB). State files gitignored;
+        # summary.md is the durable artefact each agent contributes.
+        if cycle_num % AGENT_MEM_EVERY_N == 0:
+            _run_agent_memory_writer()
 
         # Curiosity engine: proactive gap detection every CURIOSITY_EVERY_N cycles
         if cycle_num % CURIOSITY_EVERY_N == 0:
