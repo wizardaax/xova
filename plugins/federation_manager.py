@@ -315,7 +315,14 @@ def action_graph(graph: dict) -> dict:
 # ── main ──────────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    sys.stdout.reconfigure(encoding="utf-8")
+    # Tolerate pythonw / detached-stdout context (scheduled tasks). The work
+    # below doesn't depend on stdout; only the final print does. Both calls
+    # are guarded so a windowless invocation never escapes with non-zero.
+    try:
+        if sys.stdout is not None:
+            sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
     ap = argparse.ArgumentParser(description="Federation manager")
     ap.add_argument("--action",  required=True,
                     choices=["status", "sync", "message", "route", "graph", "heartbeat"])
@@ -347,7 +354,12 @@ def main() -> None:
     else:
         result = {"ok": False, "error": f"unknown action: {args.action}"}
 
-    print(json.dumps(result, ensure_ascii=False, indent=2))
+    try:
+        if sys.stdout is not None:
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+    except Exception:
+        pass
+    sys.exit(0 if (isinstance(result, dict) and result.get("ok", True)) else 1)
 
 
 if __name__ == "__main__":
