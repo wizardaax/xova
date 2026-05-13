@@ -225,11 +225,22 @@ def main() -> None:
     ap.add_argument("--value", default="null")
     ap.add_argument("--agent", default="forge")
     ap.add_argument("--ttl",   type=float, default=0.0)
-    ap.add_argument("--tags",  default="")
+    # Accept BOTH calling conventions:
+    #   --tags "foo,bar,baz"  (legacy comma-separated single string)
+    #   --tags foo bar baz    (multi-arg, used by absorb_loop._broker_write)
+    # Flatten + comma-split below covers both. Pre-fix only accepted the
+    # first form, which silently broke absorb_loop's 7 broker writes per
+    # cycle since deployment. Discovered 2026-05-14 via probe test.
+    ap.add_argument("--tags",  nargs='*', default=[])
     ap.add_argument("--tag",   default="")
     args = ap.parse_args()
 
-    tags = [t.strip() for t in args.tags.split(",") if t.strip()]
+    # Normalize: args.tags may be ["foo,bar,baz"] or ["foo","bar","baz"]
+    # or ["foo,bar","baz"] (mixed). Split each on comma, strip, drop empties.
+    _raw_tags = args.tags if isinstance(args.tags, list) else [args.tags]
+    tags: list[str] = []
+    for _t in _raw_tags:
+        tags.extend([_x.strip() for _x in str(_t).split(",") if _x.strip()])
 
     if args.action == "set":
         result = action_set(args.key, args.value, args.agent, args.ttl, tags)

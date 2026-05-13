@@ -1,13 +1,23 @@
 """
-forge_hook_reader.py — Claude Code Stop hook.
+forge_hook_reader.py — Claude Code hook reader for forge_hook_inbox.jsonl.
 
-After each Forge response, reads unread messages from forge_hook_inbox.jsonl
-and injects them as additionalContext so Forge sees them in the next turn.
+Wired in settings.json on TWO events with --event arg:
+
+  UserPromptSubmit → emit additionalContext (valid for this event).
+                     Reads unread messages past cursor, advances cursor,
+                     prints JSON with hookEventName="UserPromptSubmit"
+                     so Forge sees them at the start of its next turn.
+
+  Stop             → paused. Stop events do not accept additionalContext
+                     output (schema rejects). Exit 0 silently. The Stop
+                     hook config remains in settings.json (no removal)
+                     so wiring is preserved for future use; the script
+                     gates behaviour by the --event arg.
 
 Agents write via: python forge_inbox_write.py --from <agent> --content "..."
-Forge reads automatically — no polling, no manual check needed.
+Forge reads automatically on next prompt — no polling, no manual check.
 """
-import json, os, sys, time
+import argparse, json, os, sys, time
 
 INBOX  = r"C:\Xova\memory\forge_hook_inbox.jsonl"
 CURSOR = r"C:\Xova\memory\forge_hook_cursor.json"
@@ -36,11 +46,21 @@ def main() -> None:
     except Exception:
         pass
 
-    # consume stdin non-blockingly (Stop hook may pipe conversation JSON)
+    # consume stdin non-blockingly (hook may pipe conversation JSON we don't use)
     try:
         sys.stdin.read(0)
     except Exception:
         pass
+
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--event", default="", help="firing event name from settings.json")
+    args = ap.parse_args()
+
+    # Pause: Stop event has no valid output shape for additionalContext
+    # injection. Exit silently — preserves hook wiring without producing
+    # schema-rejected output. UserPromptSubmit is the active delivery path.
+    if args.event != "UserPromptSubmit":
+        sys.exit(0)
 
     if not os.path.isfile(INBOX):
         sys.exit(0)
@@ -90,7 +110,7 @@ def main() -> None:
 
     _write_cursor(new_pos)
 
-    out = {"hookSpecificOutput": {"hookEventName": "Stop", "additionalContext": context}}
+    out = {"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": context}}
     print(json.dumps(out, ensure_ascii=False))
     sys.stdout.flush()
     sys.exit(0)
