@@ -3959,6 +3959,75 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
       }
       return;
     }
+    // /agent06 /agent07 /agent11 — autonomous fleet agents (write + commit a finding)
+    {
+      const AGENTS: Record<string, { script: string; emoji: string; label: string; repoUrl: string }> = {
+        "/agent06": {
+          script: "C:\\Xova\\plugins\\agent_06_lucas_finding.py",
+          emoji: "🦉", label: "agent_06 Lucas Analyst",
+          repoUrl: "https://github.com/wizardaax/recursive-field-math-pro",
+        },
+        "/agent07": {
+          script: "C:\\Xova\\plugins\\agent_07_field_weaver_finding.py",
+          emoji: "🌀", label: "agent_07 Field Weaver",
+          repoUrl: "https://github.com/wizardaax/ziltrix-sch-core",
+        },
+        "/agent11": {
+          script: "C:\\Xova\\plugins\\agent_11_test_validator_finding.py",
+          emoji: "🧪", label: "agent_11 Test Validator",
+          repoUrl: "https://github.com/wizardaax/recursive-field-math-pro",
+        },
+      };
+      const agent = AGENTS[slash];
+      if (agent) {
+        setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+          text: `${agent.emoji} ${agent.label} — observing → picking topic → computing → writing → committing …`,
+        }]);
+        try {
+          const raw = await invoke<string>("xova_run", {
+            command: `python "${agent.script}"`,
+            cwd: null, elevated: false,
+          });
+          const wrap = JSON.parse(raw) as { exit: number; stdout: string; stderr: string };
+          if (wrap.exit !== 0) {
+            setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+              text: `❌ ${agent.label} failed (exit ${wrap.exit})\n\n${(wrap.stderr || wrap.stdout).slice(0, 1500)}`,
+            }]);
+            return;
+          }
+          let data: any = {};
+          try { data = JSON.parse(wrap.stdout.trim()); } catch { /* fall through */ }
+          const sha = data.commit_sha || data.commit_error || "(no commit)";
+          const committed = data.committed === true;
+          const repoBase = data.repo
+            ? String(data.repo).split(/[\\/]/).slice(-1)[0]
+            : agent.repoUrl.split("/").slice(-1)[0];
+          const status = committed ? "✓ COMMITTED" : "○ written, no commit";
+          const commitLink = committed && data.commit_sha
+            ? `${agent.repoUrl}/commit/${data.commit_sha}`
+            : "";
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text:
+`${agent.emoji} **${agent.label}** — ${status}
+
+topic:       ${data.topic ?? "?"}
+title:       ${data.title ?? "?"}
+file:        ${repoBase}/${data.file ?? "?"}
+commit:      ${sha}
+pulls (this topic): ${data.topic_pulls ?? "?"}
+pulls (total):      ${data.total_pulls ?? "?"}
+${commitLink ? `link:        ${commitLink}\n` : ""}
+${data.reward !== undefined ? `reward:      ${data.reward}\n` : ""}`.trim(),
+          }]);
+        } catch (e) {
+          setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
+            text: `cannot run ${agent.label}: ${String(e).slice(0, 200)}`,
+          }]);
+        }
+        return;
+      }
+    }
+
     // /riemann — run the Riemann · φ clustering test in-app
     if (slash === "/riemann" || slash === "/riemann-phi") {
       setMessages((prev) => [...prev, { id: `slash-${Date.now()}-${Math.random().toString(36).slice(2,5)}`, role: "xova", ts: Date.now(),
@@ -4144,6 +4213,9 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
         "  /aeon        — RUN AEON Engine v2.1 thrust simulation (in-app)\n" +
         "  /riemann     — RUN Riemann · φ clustering test (in-app)\n" +
         "  /bayesian    — RUN Bayesian cross-domain formalisation (in-app)\n" +
+        "  /agent06     — RUN agent_06 Lucas Analyst (write + git-commit a Lucas/Fibonacci finding)\n" +
+        "  /agent07     — RUN agent_07 Field Weaver (write + git-commit an AEON physics finding)\n" +
+        "  /agent11     — RUN agent_11 Test Validator (run pytest + commit a test-suite finding)\n" +
         "  /navigator   — open Time-Travel Navigator + Black Swan in dock panel\n" +
         "  /swan        — same as /navigator (alias)\n" +
         "  /swan-check  — verify SwanBackdrop watermark is mounted in DOM\n" +
@@ -5278,6 +5350,10 @@ Paper:  https://wizardaax.github.io/findings/aeon_gravity_flyer_2026_05.html`,
           { id: "p-run-aeon",     group: "Findings", label: "🚀 RUN AEON Engine (Faraday thrust simulation)", hint: "/aeon", run: () => onSend("/aeon") },
           { id: "p-run-riemann",  group: "Findings", label: "🌀 RUN Riemann · φ clustering test", hint: "/riemann", run: () => onSend("/riemann") },
           { id: "p-run-bayesian", group: "Findings", label: "📊 RUN Bayesian formalisation (50K Monte Carlo)", hint: "/bayesian", run: () => onSend("/bayesian") },
+          // Autonomous fleet agents — write + git-commit findings on every invocation
+          { id: "p-run-agent06", group: "Autonomous agents", label: "🦉 RUN agent_06 Lucas Analyst (autonomous finding + commit)", hint: "/agent06", run: () => onSend("/agent06") },
+          { id: "p-run-agent07", group: "Autonomous agents", label: "🌀 RUN agent_07 Field Weaver (autonomous AEON finding + commit)", hint: "/agent07", run: () => onSend("/agent07") },
+          { id: "p-run-agent11", group: "Autonomous agents", label: "🧪 RUN agent_11 Test Validator (run pytest + commit finding)", hint: "/agent11", run: () => onSend("/agent11") },
           // Help
           { id: "p-help", group: "Help", label: "❔ Show all slash commands", hint: "/help", run: () => onSend("/help") },
           { id: "p-version", group: "Help", label: "ℹ Version", hint: "/version", run: () => onSend("/version") },
