@@ -45,6 +45,12 @@ OLLAMA_TIMEOUT   = 60
 NO_WIN           = 0x08000000
 DEFAULT_INTERVAL = 60
 
+# Per-agent repo memory — each agent writes its OWN observations to its OWN
+# repo at xova-agent-NN-name/memory/observations.jsonl. Domain-isolated per
+# SCE-88: no agent ever writes to another agent's repo memory.
+REPOS_DIR        = r"D:\github\wizardaax"
+OBSERVATIONS_CAP = 500
+
 # ── shared sovereign goal — all agents build toward this ─────────────────────
 SOVEREIGN_GOAL = (
     "SOVEREIGN OMNI AGI — fully autonomous self-improving self-healing intelligence. "
@@ -200,6 +206,69 @@ def _agent_num(agent: str) -> int:
             "evolution":6,"sentinel":7,"phase":8,"field":9,
             "memory":10,"repo":11,"voice":12,"coherence":13}
     return nums.get(agent, 0)
+
+
+# ── per-agent repo memory writer ──────────────────────────────────────────────
+AGENT_REPO = {
+    "forge":     "xova-agent-01-forge",
+    "jarvis":    "xova-agent-02-jarvis",
+    "mesh":      "xova-agent-03-mesh",
+    "browser":   "xova-agent-04-browser",
+    "corpus":    "xova-agent-05-corpus",
+    "evolution": "xova-agent-06-evolution",
+    "sentinel":  "xova-agent-07-sentinel",
+    "phase":     "xova-agent-08-phase",
+    "field":     "xova-agent-09-field",
+    "memory":    "xova-agent-10-memory",
+    "repo":      "xova-agent-11-repo",
+    "voice":     "xova-agent-12-voice",
+    "coherence": "xova-agent-13-coherence",
+}
+
+
+def _write_self_memory(agent: str, result: dict) -> None:
+    """Append this cycle's result to the agent's OWN repo memory.
+
+    Path: D:\\github\\wizardaax\\xova-agent-NN-name\\memory\\observations.jsonl
+    Cap:  OBSERVATIONS_CAP lines (rolling — oldest dropped when over).
+    Atomic: when rewriting after cap, write to .tmp then os.replace.
+    Silent on failure: never break the agent runtime over a disk hiccup.
+
+    SCE-88 domain isolation: this function writes ONLY to `agent`'s own
+    repo. No cross-agent writes.
+    """
+    try:
+        repo = AGENT_REPO.get(agent)
+        if not repo:
+            return
+        mdir = os.path.join(REPOS_DIR, repo, "memory")
+        if not os.path.isdir(mdir):
+            return
+        path = os.path.join(mdir, "observations.jsonl")
+        line = json.dumps({
+            "ts":           result.get("ts", time.time()),
+            "summary":      str(result.get("summary", ""))[:300],
+            "tools_called": int(result.get("tools_called", 0) or 0),
+            "inbox_tasks":  int(result.get("inbox_tasks", 0) or 0),
+        }, ensure_ascii=False) + "\n"
+        # Simple append first
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(line)
+        # Cap check — if over, atomic rewrite of the tail
+        try:
+            with open(path, encoding="utf-8") as fh:
+                lines = fh.readlines()
+        except Exception:
+            return
+        if len(lines) > OBSERVATIONS_CAP:
+            tail = lines[-OBSERVATIONS_CAP:]
+            tmp  = path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as fh:
+                fh.writelines(tail)
+            os.replace(tmp, path)
+    except Exception:
+        # Never block the cycle on a write failure.
+        return
 
 
 # ── plugin callers ─────────────────────────────────────────────────────────────
@@ -440,7 +509,7 @@ def run_cycle(agent: str) -> dict:
     if any(w in done_summary.lower() for w in ("fail", "error", "queued", "pending", "stale")):
         _tool_report(f"[{agent}] {done_summary[:200]}")
 
-    return {
+    result = {
         "ok":      True,
         "agent":   agent,
         "ts":      time.time(),
@@ -448,6 +517,10 @@ def run_cycle(agent: str) -> dict:
         "inbox_tasks":  len(inbox),
         "summary": done_summary,
     }
+    # Per-agent repo memory — agent writes its OWN observation to its OWN repo.
+    # SCE-88 domain isolation respected: no cross-agent writes.
+    _write_self_memory(agent, result)
+    return result
 
 
 # ── main ───────────────────────────────────────────────────────────────────────
@@ -469,8 +542,22 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
+    # Stop-signal paths — graceful exit at top of each cycle.
+    # Per-agent:    D:\github\wizardaax\xova-agent-NN-name\memory\stop_signal
+    # Global (all): C:\Xova\memory\agent_fleet_stop
+    # Created by stop_agent_fleet.py or `New-Item ...`. Cleared by start_agent_fleet.py
+    # before re-launching. This is the kill-switch — agents NEVER taskkill themselves
+    # or each other; they cooperatively exit when signaled.
+    repo_dir = AGENT_REPO.get(args.agent)
+    stop_path = (os.path.join(REPOS_DIR, repo_dir, "memory", "stop_signal")
+                 if repo_dir else "")
+    global_stop_path = r"C:\Xova\memory\agent_fleet_stop"
+
     print(f"[agent_runtime] {args.agent} started, interval={args.interval}s")
     while True:
+        if (stop_path and os.path.isfile(stop_path)) or os.path.isfile(global_stop_path):
+            print(f"[agent_runtime] {args.agent} stop signal received, exiting cleanly")
+            return
         try:
             result = run_cycle(args.agent)
             print(f"[agent_runtime] {args.agent}: {result['summary'][:80]} "
