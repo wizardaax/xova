@@ -1,11 +1,15 @@
 use std::process::Command;
 use std::fs;
 use std::path::Path;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+type CancelMap = Arc<Mutex<HashMap<String, tokio_util::sync::CancellationToken>>>;
 
 const SNELL_VERN_EXE: &str = "C:\\Users\\adz_7\\pipx\\venvs\\snell-vern-matrix\\Scripts\\snell-vern.exe";
 const MEMORY_DIR: &str = "C:\\Xova\\memory";
@@ -337,6 +341,7 @@ fn load_memory(key: String) -> Result<String, String> {
 #[tauri::command]
 async fn ollama_chat_stream(
     app: tauri::AppHandle,
+    cancels: tauri::State<'_, CancelMap>,
     request_id: String,
     messages: String,
     model: Option<String>,
@@ -385,9 +390,21 @@ async fn ollama_chat_stream(
     let mut final_tool_calls: Option<serde_json::Value> = None;
 
     use futures_util::StreamExt;
+    use tokio_util::sync::CancellationToken;
+    let cancel_token = CancellationToken::new();
+    cancels.lock().unwrap().insert(request_id.clone(), cancel_token.clone());
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
-    while let Some(chunk_result) = stream.next().await {
+    loop {
+        let maybe_chunk = tokio::select! {
+            biased;
+            _ = cancel_token.cancelled() => break,
+            res = stream.next() => res,
+        };
+        let chunk_result = match maybe_chunk {
+            Some(r) => r,
+            None => break,
+        };
         let chunk = chunk_result.map_err(|e| format!("stream chunk err: {}", e))?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
         // Ollama's chat stream is one JSON object per line. Process complete lines.
@@ -421,6 +438,7 @@ async fn ollama_chat_stream(
             }
         }
     }
+    cancels.lock().unwrap().remove(&request_id);
 
     // Strip <think>...</think> from accumulated content, defensive.
     let cleaned = strip_think_tags(&accumulated_content);
@@ -436,6 +454,17 @@ async fn ollama_chat_stream(
         "result": final_payload,
     }));
     Ok(final_str)
+}
+
+#[tauri::command]
+async fn cancel_ollama_stream(
+    cancels: tauri::State<'_, CancelMap>,
+    request_id: String,
+) -> Result<(), String> {
+    if let Some(token) = cancels.lock().unwrap().remove(&request_id) {
+        token.cancel();
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -1579,6 +1608,7 @@ fn load_chosen_model() -> String {
 pub fn run() {
     warmup_ollama();
     tauri::Builder::default()
+        .manage(Arc::new(Mutex::new(HashMap::<String, tokio_util::sync::CancellationToken>::new())))
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             use tauri::Manager;
             if let Some(w) = app.get_webview_window("main") {
@@ -1679,6 +1709,7 @@ pub fn run() {
             load_memory,
             ollama_chat,
             ollama_chat_stream,
+            cancel_ollama_stream,
             xova_read_codex,
             xova_read_file,
             xova_list_dir,
