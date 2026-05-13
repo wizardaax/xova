@@ -429,7 +429,12 @@ def _sce88_check(text: str, from_agent: str) -> str:
         try:
             with open(CONTEXT_BROKER_STORE, "r", encoding="utf-8") as fh:
                 store = json.load(fh)
-            slot = store.get("xova.sce88_status") or store.get("mesh.sce88_status")
+            # Broker schema: { version, updated_at, slots: { <key>: {value, ts, ttl, tags} } }
+            # Slots are nested under top-level "slots". Same bug class as fixed in
+            # StatusBar.tsx 2026-05-13 — flat-root access returned None, advisory
+            # gate fell back to coherence=0.7 default instead of real broker value.
+            slots = store.get("slots", {}) if isinstance(store, dict) else {}
+            slot = slots.get("xova.sce88_status") or slots.get("mesh.sce88_status")
             if isinstance(slot, dict) and "value" in slot:
                 v = slot["value"]
                 if isinstance(v, dict):
