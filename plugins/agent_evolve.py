@@ -42,7 +42,23 @@ def _read_broker() -> dict:
 
 
 def _broker_slot(broker: dict, key: str) -> object:
-    return broker.get("slots", {}).get(key, {}).get("value")
+    """Return slot domain data, handling both schema shapes.
+
+    Wrapped form (written via context_broker.py --action set):
+        slot = {"agent": "...", "value": <data>, "ts": ..., "ttl": ..., "tags": [...]}
+    Flat form (written directly by plugins like field_weave.py, ci_health.py):
+        slot = <data dict, top-level keys are domain fields>
+
+    Without this dual handling, every flat-slot agent (sentinel/field/corpus/
+    repo/phase/coherence) reads `None` → generators get `{}` → all numeric
+    fields default to 0 → false-positive gap detections fire across the fleet.
+    """
+    slot = broker.get("slots", {}).get(key)
+    if not isinstance(slot, dict):
+        return None
+    if "value" in slot:
+        return slot.get("value")
+    return slot  # flat shape — the slot itself IS the domain data
 
 
 def _run_sandbox(code: str) -> tuple[bool, str]:
@@ -105,6 +121,15 @@ def _propose(agent: str, filepath: str, description: str) -> dict:
         return {"ok": False, "error": str(exc)}
 
 
+# ── Helper: embed broker data as a runtime json.loads call ───────────────────
+# Direct f-string interpolation of json.dumps(data) embeds bare `null`/`true`/
+# `false` JSON literals into the generated Python source — Python evaluates
+# `null` as a name and raises NameError. Embedding as a JSON string parsed at
+# sandbox runtime restores the correct semantics (null→None, true→True, etc.).
+def _embed_data(data) -> str:
+    return f"json.loads({json.dumps(json.dumps(data))})"
+
+
 # ── Domain code generators ────────────────────────────────────────────────────
 # Each function receives current broker state and returns Python source code
 # that the agent WROTE to evaluate its domain.
@@ -115,8 +140,8 @@ def _gen_coherence_eval(broker: dict) -> str:
     return f"""
 import json, math, time
 
-cycles = {json.dumps(cycles)}
-ternary = {json.dumps(ternary)}
+cycles = {_embed_data(cycles)}
+ternary = {_embed_data(ternary)}
 
 # Coherence agent self-written evaluation
 # Compute rolling coherence trend from last N cycles
@@ -168,8 +193,8 @@ def _gen_phase_eval(broker: dict) -> str:
     return f"""
 import json, math
 
-lucas = {json.dumps(lucas)}
-cycles = {json.dumps(cycles)}
+lucas = {_embed_data(lucas)}
+cycles = {_embed_data(cycles)}
 
 # Phase agent self-written evaluation
 # Check Lucas convergence health + phase drift
@@ -215,8 +240,8 @@ def _gen_field_eval(broker: dict) -> str:
     return f"""
 import json, math
 
-field = {json.dumps(field)}
-ternary = {json.dumps(ternary)}
+field = {_embed_data(field)}
+ternary = {_embed_data(ternary)}
 
 # Field agent self-written evaluation
 GOLDEN_DEG_EXPECTED = 137.50776405003785
@@ -264,7 +289,7 @@ def _gen_sentinel_eval(broker: dict) -> str:
     return f"""
 import json, os, time
 
-ci = {json.dumps(ci)}
+ci = {_embed_data(ci)}
 violations_path = r{repr(violations_path)}
 
 # Sentinel agent self-written evaluation
@@ -328,7 +353,7 @@ critical_slots = [
     'forge.current_task', 'agents.last_cycles', 'xova.ternary_eval',
     'xova.ci_health', 'federation.heartbeat', 'xova.corpus_recall',
 ]
-broker_raw = {json.dumps(slots)}
+broker_raw = {_embed_data(slots)}
 
 missing = [s for s in critical_slots if s not in broker_raw]
 stale = []
@@ -362,7 +387,7 @@ def _gen_corpus_eval(broker: dict) -> str:
     return f"""
 import json
 
-corpus = {json.dumps(corpus)}
+corpus = {_embed_data(corpus)}
 
 # Corpus agent self-written evaluation
 total = corpus.get('total', 0) if corpus else 0
@@ -408,8 +433,8 @@ def _gen_repo_eval(broker: dict) -> str:
     return f"""
 import json
 
-ci = {json.dumps(ci)}
-repo_sync = {json.dumps(repo_sync)}
+ci = {_embed_data(ci)}
+repo_sync = {_embed_data(repo_sync)}
 
 # Repo agent self-written evaluation
 pass_rate = ci.get('pass_rate', 0) if ci else 0
