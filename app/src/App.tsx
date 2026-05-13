@@ -499,6 +499,14 @@ function App() {
     }
   }, []);
 
+  // Continuous perception — auto-start screen watch at boot so Xova has live
+  // screen context every 60s. Vision summaries flow into chat history and
+  // become part of her LLM context on her next reply. No action layer (yet);
+  // perception only. Toggle off any time with `/watch off`.
+  useEffect(() => {
+    startScreenWatch(60_000);
+  }, [startScreenWatch]);
+
   // Wire the Ctrl+T new-session shortcut's input ref to the latest state.
   useEffect(() => {
     newSessionInputsRef.current = { messages, log, coherenceHistory, refresh: refreshSessionList };
